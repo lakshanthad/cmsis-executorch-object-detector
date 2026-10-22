@@ -2,10 +2,11 @@
  * Copyright 2026 Arm Limited and/or its affiliates.
  * SPDX-License-Identifier: Apache-2.0
  *
- * The camera of the traffic counter on the Ensemble E7 (AppKit-E7). The E7
- * has no ISP and its CPI no streaming mode: the sensor streams over MIPI
- * CSI-2 into the CPI, which writes one frame buffer; at each VSYNC the
- * application hands it the next of CAMERA_BUFFERS buffers, as the pack's
+ * The camera of the demo, written for the Ensemble E7 (AppKit-E7) and used
+ * as it is on the E8 (DevKit-E8). The E7 has no ISP and its CPI no streaming
+ * mode: the sensor streams over MIPI CSI-2 into the CPI, which writes one
+ * frame buffer; at each VSYNC the application hands it the next of
+ * CAMERA_BUFFERS buffers, as the pack's
  * vStream driver does, and the frame just completed is the newest one. The
  * pixels stay as the sensor delivers them; image.c turns them into the model
  * input on the CPU:
@@ -17,8 +18,8 @@
  *   MT9M114 (RTE_Drivers_CAMERA_SENSOR_MT9M114): 640x480 RGB565 from the
  *       sensor's own ISP (RTE_MT9M114_CAMERA_SENSOR_MIPI_IMAGE_CONFIG 3).
  */
-#ifndef TRAFFIC_CAMERA_H_
-#define TRAFFIC_CAMERA_H_
+#ifndef DETECT_CAMERA_H_
+#define DETECT_CAMERA_H_
 
 #include <stdint.h>
 
@@ -86,4 +87,4 @@ uint32_t camera_gain(void);
 }
 #endif
 
-#endif /* TRAFFIC_CAMERA_H_ */
+#endif /* DETECT_CAMERA_H_ */

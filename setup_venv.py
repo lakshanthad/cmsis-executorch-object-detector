@@ -2,7 +2,8 @@
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Create the Python venv used by create_ai_layer.py to export the model. No Docker.
+# Create the Python venv in which Ultralytics exports the model and
+# detect/make_ai_layer.py imports it. No Docker.
 #
 # Runs on Linux, macOS and Windows. The thin wrappers setup_venv.sh and
 # setup_venv.bat just delegate here; everything OS-specific lives in this file.
@@ -32,9 +33,7 @@ MAX_PYTHON_EXCLUSIVE = (3, 15)
 def venv_python(venv_dir: Path) -> Path:
     """Path to the interpreter inside a venv, on any host OS.
 
-    Windows puts it in Scripts/python.exe, everyone else in bin/python. This is
-    the one place that difference is encoded; run_in_venv() in
-    create_ai_layer.py makes the same choice.
+    Windows puts it in Scripts/python.exe, everyone else in bin/python.
     """
     if os.name == "nt":
         return venv_dir / "Scripts" / "python.exe"
@@ -214,7 +213,7 @@ def main() -> int:
 
     print()
     print(f"venv ready: {VENV_DIR}")
-    print("create_ai_layer.py runs itself with this interpreter:")
+    print("Export and import the model with this interpreter:")
     print(f"  {python}")
     return 0
 

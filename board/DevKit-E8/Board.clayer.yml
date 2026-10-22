@@ -1,24 +1,24 @@
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Alif Ensemble E8 DevKit (DK-E8) board bring-up for the traffic counter
-# (traffic/traffic.cproject.yml), on the Cortex-M55 high-performance (HP)
-# core with the E8's Ethos-U85-256. The AppKit-E7 layer (../AppKit-E7) with
-# the E8's pack configuration: the display (CDC200 -> MIPI DSI -> ILI9806E
-# 480x800), the camera (the kit's MT9M114 module, 640x480 RGB565 over MIPI
-# CSI-2 into the CPI, a snapshot per frame as on the E7, traffic/camera.c),
-# the console in a log buffer that the debugger reads (SW4 stays on SEUART
-# for the Secure Enclave tools), SDS over the SoC USB connector, and a
-# scatter file whose code region runs on into the MRAM user region for the
-# 2.4 MB YOLO26n program.
+# Alif Ensemble E8 DevKit (DK-E8) board bring-up for the object detection
+# demo (detect/detect.cproject.yml), on the Cortex-M55 high-performance (HP)
+# core with the E8's Ethos-U85-256: the display (CDC200 -> MIPI DSI ->
+# ILI9806E 480x800), the camera (the kit's MT9M114 module, 640x480 RGB565
+# over MIPI CSI-2 into the CPI, a snapshot per frame, detect/camera.c), the
+# console in a log buffer that the debugger reads (SW4 stays on SEUART for
+# the Secure Enclave tools), and a scatter file whose code region runs on
+# into the MRAM user region for the 2.4 MB YOLO26n program.
 #
-# What differs from the AppKit-E7: the NPU is the E8's Ethos-U85 (ETHOSU85,
-# NPU_HG_BASE, ethos_setup.c) with the AI layer ai_layer_u85/; the Ethos-U
-# driver's default region routing applies (the command stream and the
-# weights in the MRAM through the NPU's EXT port, the scratch in the SRAM);
-# no IMAGE_PANEL_TURN_180 (the DevKit-E8's panel shows the picture upright
-# as drawn, checked on the board); the USB PHY is powered through VBAT
-# (main.c); SRAM1 is 4 MB at 0x02400000, right after SRAM0.
+# The NPU is the E8's Ethos-U85 (ETHOSU85, NPU_HG_BASE, ethos_setup.c); the
+# Ethos-U driver's default region routing applies (the command stream and the
+# weights in the MRAM through the NPU's EXT port, the scratch in the SRAM).
+# SRAM1 is 4 MB at 0x02400000, right after SRAM0.
+#
+# The layer also builds in SDS over the SoC USB connector (J2), with the USB
+# PHY powered through VBAT (main.c). It comes from the traffic counter this
+# layer was first written for (MatthiasHertelArm/cmsis-executorch-traffic-counter);
+# the demo does not use it.
 #
 # RTE/ holds the configuration of the pack's DevKit-e8 M55_HP layer (its
 # Conductor pins.h, gpios.h and board_defs.h, its RTE_Device.h) with one
@@ -26,7 +26,7 @@
 # the sensor's ISP; the pack's 1 is 1280x720 RAW8).
 layer:
   type: Board
-  description: DevKit-E8 board setup for the traffic counter on M55_HP with the Ethos-U85
+  description: DevKit-E8 board setup for the object detection demo on M55_HP with the Ethos-U85
   for-board: Alif Semiconductor::DevKit-E8
   for-device: Alif Semiconductor::AE822FA0E5597LS0:M55_HP
   device: :M55_HP
@@ -55,23 +55,18 @@ layer:
     - APP_DISPLAY_HEIGHT: 800
     - APP_THREAD_STACK_SIZE: 0x8000
     # The camera: the MT9M114 over MIPI CSI-2 into the CPI, 640x480 RGB565,
-    # two buffers the application swaps at each frame (traffic/camera.c).
+    # two buffers the application swaps at each frame (detect/camera.c).
     - APP_HAS_CAMERA: 1
     # The panel's MADCTL (0x36) value, written before the video stream starts.
     # On the ILI9806E in video mode only bit 0 does anything: it mirrors the
     # panel along its long axis (the pack's panel driver sets 0x01, mirrored).
     # 0x00 shows the frame buffer as drawn.
-    - TRAFFIC_LCD_MADCTL: 0x00
-    # No IMAGE_PANEL_TURN_180 (traffic/image.c): unlike the AppKit-E7's, this
-    # panel shows the frame buffer upright as drawn (checked on the board).
-    # SDS recording and playback over the SoC USB connector (J2). The MDK USB
-    # middleware takes the driver index and the speed from these (the SDS USB
-    # layer expects a board layer to provide them): Driver_USBD0, high-speed.
-    - APP_HAS_SDS: 1
-    - APP_HAS_JOYSTICK: 1 # the line moves with the joystick (traffic/joystick.c)
+    - APP_LCD_MADCTL: 0x00
     # The NPU scratch in SRAM1 so that both panel buffers and the camera
     # frames fit SRAM0.
     - APP_TEMP_POOL_SECTION: \".bss.sram1\"
+    # SDS over the SoC USB connector (J2): the MDK USB middleware takes the
+    # driver index and the speed from these, Driver_USBD0, high-speed.
     - CMSIS_DRIVER_USBD: 0
     - CMSIS_DRIVER_USBD_HS: 1
 
@@ -162,8 +157,8 @@ layer:
       files:
         - file: ./ethosu_cb_dcache.c
 
-  # AC6 only: the MRAM layout of the traffic counter (linker_ac6_traffic.sct.src).
+  # AC6 only: the MRAM layout of the application (linker_ac6_app.sct.src).
   linker:
     - regions: ./RTE/Device/AE822FA0E5597LS0_M55_HP/app_mem_regions.h
-    - script: ./linker_ac6_traffic.sct.src
+    - script: ./linker_ac6_app.sct.src
       for-compiler: AC6

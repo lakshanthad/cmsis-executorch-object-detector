@@ -8,9 +8,8 @@
  * attention blocks included). It returns, per anchor, the box distances and
  * one score per COCO class (int8). The CPU does what is left of the YOLO26
  * head: the best class of each anchor, the threshold, the distances of the
- * survivors turned into boxes. The one-to-one head of
- * YOLO26 is NMS-free; an IoU check still drops the rare duplicate.
- * traffic/detector.cpp is the same with the five vehicle classes.
+ * survivors turned into boxes. The one-to-one head of YOLO26 is NMS-free; an
+ * IoU check still drops the rare duplicate.
  *
  * The Ethos-U backend copies the input into the NPU scratch with
  * arm_ethos_io_memcpy(); the override below turns RGB888 into the int8 input

@@ -2,10 +2,9 @@
  * Copyright 2026 Arm Limited and/or its affiliates.
  * SPDX-License-Identifier: Apache-2.0
  *
- * Pixel work of the detection demo on the CPU, see image.h: the generic part
- * of traffic/image.c (the camera frame to the model input, the input to the
- * panel, rectangles and text), without the AppKit-E7's turned panel, plus
- * boxes in the Ultralytics colours.
+ * Pixel work of the detection demo on the CPU, see image.h: the camera frame
+ * to the model input, the input to the panel, rectangles and text, and boxes
+ * in the Ultralytics colours.
  *
  * RGB565 as the CPI stores an MT9M114's frames: one halfword per pixel, B in
  * bits 4:0, G in 10:5, R in 15:11. The model input is RGB888, three bytes

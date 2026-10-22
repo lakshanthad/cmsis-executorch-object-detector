@@ -15,10 +15,8 @@
  *      score, the frame rate and the timing around it in the display thread,
  *      while the NPU works on the next frame; double-buffered.
  *
- * The threads are the traffic counter's (traffic/app_traffic.cpp) without
- * its tracker, counting line, joystick and SDS. The console is a log buffer
- * that the debugger reads (board layer); the latest result and the frame
- * timing are in the global `detect_status`.
+ * The console is a log buffer that the debugger reads (board layer); the
+ * latest result and the frame timing are in the global `detect_status`.
  */
 
 #include <cstdint>
@@ -335,9 +333,8 @@ extern "C" int app_main(void) {
   }
   bool display_on = display_init() == 0;
   // The panel's memory access control (MADCTL, 0x36) before the video stream
-  // starts: the board layer's value (named for the traffic counter, which
-  // the layer was written for) shows the frame buffer as drawn.
-  if (display_on) DSI_DCS_Short_Write(0x36, TRAFFIC_LCD_MADCTL);
+  // starts: the board layer's value shows the frame buffer as drawn.
+  if (display_on) DSI_DCS_Short_Write(0x36, APP_LCD_MADCTL);
   if (display_on) display_on = display_start(g_framebuffer[1]) == 0;
   if (!display_on) printf("display: not available\n");
   int back = 0;

@@ -1,12 +1,10 @@
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
-# CI for the three-step flow (cbuild setup, create_ai_layer.py, cbuild): the
-# AI layers exported from a fresh clone (Ethos-U55 and Ethos-U85), the traffic
-# counter built for the AppKit-E7, the DevKit-E8 and the Corstone-300 FVP, and
-# run on the FVP; the DevKit-E8's object detection demo built with its
-# committed AI layer, the program of `yolo export format=ethos`.
-name: Build and Run
+# CI for the object detection demo: the test image made and the demo built
+# for the DevKit-E8 with its committed AI layer, the program of
+# `yolo export format=ethos`; the model-export venv on the three host OSes.
+name: Build
 
 on:
   workflow_dispatch:
@@ -19,11 +17,10 @@ env:
   SOLUTION: cmsis-executorch
 
 jobs:
-  # Linux only: the FVP needs an Arm user-based license, so matrixing this
-  # across hosts is not cheap. AC6 only: the Alif boards' scatter files and the
-  # FVP layer's semihosting exit are written for Arm Compiler 6.
-  build-and-run:
-    name: Export, build for AppKit-E7, DevKit-E8 and SSE-300-U55, run on the FVP
+  # Linux only: Arm Compiler 6 needs an Arm user-based license. AC6 only: the
+  # board layer's scatter file is written for Arm Compiler 6.
+  build:
+    name: Build for the DevKit-E8
     runs-on: ubuntu-latest
 
     steps:
@@ -36,14 +33,10 @@ jobs:
       - name: Activate Arm tool license
         uses: ARM-software/cmsis-actions/armlm@v1
 
-      # The FVP loads the runner's libpython3.11, whose standard library is
-      # not where that build's prefix says; the model then dies at start-up
-      # with "Fatal Python error: init_fs_encoding". PYTHONHOME (set on the
-      # FVP step only) points it at a complete Python 3.11.
-      - name: Set up Python 3.11 for the FVP
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.12"
 
       - name: Cache packs
         uses: actions/cache@v6
@@ -64,71 +57,26 @@ jobs:
           ./setup_venv.sh
           .venv/bin/python -m pip install ultralytics
 
-      # From a COCO photo that is not ours to redistribute, so not committed.
+      # From the bus.jpg of the ultralytics package, which is not ours to
+      # redistribute, so not committed.
       - name: Make the test image
-        run: .venv/bin/python traffic/make_test_image.py
-
-      # The demo's: the bus.jpg of the ultralytics package, not committed either.
-      - name: Make the test image of the object detection demo
         run: .venv/bin/python detect/make_test_image.py
-
-      - name: Generate the MLOps information
-        run: cbuild setup ${SOLUTION}.csolution.yml --active AppKit-E7 --packs
-
-      - name: Create the AI layer
-        run: |
-          .venv/bin/python create_ai_layer.py ${SOLUTION}.cbuild-mlops.yml
-          git diff --stat -- ai_layer/
-
-      # The DevKit-E8's Ethos-U85 has its own, hand-written MLOps file; it
-      # uses the .cmsis/ensemble_vela.ini that cbuild setup copied.
-      - name: Create the AI layer for the Ethos-U85
-        run: |
-          .venv/bin/python create_ai_layer.py ai_layer_u85/${SOLUTION}.cbuild-mlops.yml
-          git diff --stat -- ai_layer_u85/
-
-      - name: Build for the AppKit-E7
-        run: cbuild ${SOLUTION}.csolution.yml --active AppKit-E7 --packs
 
       - name: Build for the DevKit-E8
         run: cbuild ${SOLUTION}.csolution.yml --active DevKit-E8 --packs
-
-      - name: Build the object detection demo for the DevKit-E8
-        run: cbuild ${SOLUTION}.csolution.yml --active DevKit-E8@detect --packs
-
-      - name: Build for the Corstone-300 FVP
-        run: cbuild ${SOLUTION}.csolution.yml --active SSE-300-U55 --packs
-
-      - name: Run on the FVP
-        env:
-          PYTHONHOME: ${{ env.pythonLocation }}
-        run: |
-          # stdio is retargeted to semihosting, so the output arrives on the
-          # FVP's own stdout; the application's exit() ends the simulation.
-          FVP_Corstone_SSE-300_Ethos-U55 \
-              -f board/Corstone-300/fvp_config.txt \
-              -a out/traffic/SSE-300-U55/Release/traffic.axf \
-              --simlimit 600 --stat \
-              | tee fvp_stdout.log
-
-          echo "Checking simulation output"
-          grep -q "Test_result: PASS" fvp_stdout.log
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: traffic-counter
+          name: object-detection
           path: |
-            fvp_stdout.log
             out/**/*.axf
             out/**/*.hex
-            ai_layer/
-            ai_layer_u85/
 
   # The export flow must work on all three host OSes -- that is the point of a
-  # venv-based (rather than Docker-based) model build. No FVP and no Arm
-  # license needed, so this is cheap to matrix. Without this job, Windows
+  # venv-based (rather than Docker-based) model build. No Arm license needed,
+  # so this is cheap to matrix. Without this job, Windows
   # support regresses on the first refactor and nobody notices.
   venv-cross-platform:
     name: Model export venv (${{ matrix.os }})
@@ -146,7 +94,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Create model-export venv (POSIX)
         if: runner.os != 'Windows'
@@ -156,7 +104,7 @@ jobs:
         if: runner.os == 'Windows'
         run: .\setup_venv.bat
 
-      - name: Check the export entry point
+      - name: Check the export and import entry points
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
@@ -165,9 +113,9 @@ jobs:
               PY=.venv/bin/python
           fi
           "${PY}" -c "import executorch.backends.arm.quantizer.quantization_annotator; print('arm quantizer OK')"
-          # No cbuild-mlops.yml without cbuild; importing the script checks
-          # that it parses under this interpreter.
-          "${PY}" -c "import create_ai_layer; print('create_ai_layer.py OK')"
+          # detect/make_ai_layer.py reads the program with ExecuTorch's deserializer.
+          "${PY}" -c "from executorch.exir._serialize._program import deserialize_pte_binary; print('pte reader OK')"
+          "${PY}" -m py_compile detect/make_ai_layer.py detect/make_test_image.py tools/console_log.py
 
       - name: Report resolved versions
         shell: bash

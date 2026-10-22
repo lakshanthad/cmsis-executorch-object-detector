@@ -5,17 +5,19 @@
 
     python detect/make_test_image.py [<image file or URL>]
 
-As traffic/make_test_image.py: the image is letterboxed to the model input
-(the Ultralytics grey padding) and stored as interleaved RGB888, what the
-camera path hands over. The input size is the program's, from
-ai_layer_detect/model_io.h. The default is the bus.jpg that comes with the
-Ultralytics package (people and a bus). The generated file is not committed
-(.gitignore); run this once before the first build, and again after
-detect/make_ai_layer.py imported a program of another input size.
+The image is letterboxed to the model input (the Ultralytics grey padding)
+and stored as interleaved RGB888, what the camera path hands over. The input
+size is the program's, from ai_layer_detect/model_io.h. The default is the
+bus.jpg that comes with the Ultralytics package (people and a bus). The
+generated file is not committed (.gitignore); run this once before the first
+build, and again after detect/make_ai_layer.py imported a program of another
+input size.
 
 It also prints what Ultralytics `predict` finds in the letterboxed image with
 the one-to-one head that the program runs (nms=False) and the board's score
-threshold: the float reference for the board.
+threshold: the float reference for the board. The COCO-pretrained
+yolo26n.pt is the one at the repository root, which Ultralytics downloads on
+the first run (and `yolo export model=yolo26n.pt` run there uses too).
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-sys.path.insert(0, str(ROOT / "model"))
+WEIGHTS = ROOT / "yolo26n.pt"
 
 
 def fetch(source: str) -> bytes:
@@ -41,6 +43,20 @@ def fetch(source: str) -> bytes:
     context = ssl.create_default_context(cafile=certifi.where())
     with urllib.request.urlopen(source, context=context) as response:
         return response.read()
+
+
+def letterbox(bgr: np.ndarray, size: int) -> np.ndarray:
+    """Resize the longer side to `size` and pad to a square with the Ultralytics grey: RGB uint8."""
+    import cv2
+
+    h, w = bgr.shape[:2]
+    r = size / max(h, w)
+    nw, nh = round(w * r), round(h * r)
+    resized = cv2.resize(bgr, (nw, nh), interpolation=cv2.INTER_AREA if r < 1 else cv2.INTER_LINEAR)
+    out = np.full((size, size, 3), 114, dtype=np.uint8)
+    px, py = (size - nw) // 2, (size - nh) // 2
+    out[py : py + nh, px : px + nw] = resized[:, :, ::-1]
+    return out
 
 
 def define(path: Path, pattern: str) -> str:
@@ -56,17 +72,14 @@ def main() -> None:
     from ultralytics import YOLO
     from ultralytics.utils import ASSETS
 
-    import yolo
-
     size = int(define(ROOT / "ai_layer_detect/model_io.h", r"MODEL_DETECT_INPUT0_SHAPE \{1, (\d+), \d+, 3\}"))
     threshold = float(define(HERE / "detector.h", r"DETECTOR_SCORE_THRESHOLD ([0-9.]+)f"))
     source = sys.argv[1] if len(sys.argv) > 1 else str(ASSETS / "bus.jpg")
     bgr = cv2.imdecode(np.frombuffer(fetch(source), np.uint8), cv2.IMREAD_COLOR)
-    rgb, _, _ = yolo.letterbox(bgr, size)
+    rgb = letterbox(bgr, size)
 
     # The square letterboxed image is already the input size, so predict adds no padding of its own.
-    yolo.CACHE.mkdir(exist_ok=True)
-    model = YOLO(str(yolo.CACHE / yolo.WEIGHTS))  # Ultralytics downloads the COCO-pretrained weights
+    model = YOLO(str(WEIGHTS))  # Ultralytics downloads the COCO-pretrained weights
     result = model.predict(np.ascontiguousarray(rgb[..., ::-1]), imgsz=size, conf=threshold, nms=False, verbose=False)[0]
     reference = [
         f"{result.names[int(c)]} {s:.2f} x1 {x1:.0f} y1 {y1:.0f} x2 {x2:.0f} y2 {y2:.0f}"

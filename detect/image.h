@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Pixel work of the detection demo on the CPU: the camera frame to the model
- * input, the picture to the panel, boxes and text (the generic part of
- * traffic/image.h).
+ * input, the picture to the panel, boxes and text.
  *
  * The panel frame is APP_DISPLAY_WIDTH x APP_DISPLAY_HEIGHT RGB888 (480 x 800,
  * portrait), in the CDC200's byte order B, G, R; colours given as uint32_t are

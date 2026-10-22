@@ -2,9 +2,9 @@
  * Copyright 2026 Arm Limited and/or its affiliates.
  * SPDX-License-Identifier: Apache-2.0
  *
- * The camera of the traffic counter, on the Ensemble pack's Driver_CPI, see
- * camera.h. The buffer swap at VSYNC follows the pack's vstream_video_in.c
- * of the AppKit-E7 layer.
+ * The camera of the demo, on the Ensemble pack's Driver_CPI, see camera.h.
+ * The buffer swap at VSYNC follows the pack's vstream_video_in.c of the
+ * AppKit-E7 layer.
  */
 
 #include <stddef.h>
@@ -25,9 +25,8 @@ extern ARM_DRIVER_CPI Driver_CPI;
 #define CAMERA_ERRORS (ARM_CPI_EVENT_ERR_CAMERA_INPUT_FIFO_OVERRUN | ARM_CPI_EVENT_ERR_CAMERA_OUTPUT_FIFO_OVERRUN | \
                        ARM_CPI_EVENT_ERR_HARDWARE | ARM_CPI_EVENT_MIPI_CSI2_ERROR)
 
-/* In SRAM1, not initialised by the C library (linker_ac6_traffic.sct.src):
-   app_main powers SRAM1 before camera_init. */
-static uint8_t camera_buffer[CAMERA_BUFFERS][CAMERA_FRAME_BYTES] __attribute__((aligned(32), section(".bss.ai_pool")));  /* TEST: SRAM0 */
+/* In SRAM0 with the ExecuTorch pools: the CPI cannot write SRAM1 (camera.h). */
+static uint8_t camera_buffer[CAMERA_BUFFERS][CAMERA_FRAME_BYTES] __attribute__((aligned(32), section(".bss.ai_pool")));
 
 static osEventFlagsId_t camera_flags;
 static volatile uint32_t camera_frames;  /* complete frames since the start */

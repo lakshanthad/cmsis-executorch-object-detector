@@ -15,11 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * DevKit-E8 (M55_HP) board bring-up for the traffic counter. The AppKit-E7
- * layer's main.c with the USB PHY powered as the Ensemble pack's DevKit-E8
- * layer does it (VBAT power control, not the Secure Enclave's run profile):
- * the Secure Enclave link, the clocks, the MIPI DPHY power for the panel and
- * the camera, the USB PHY for SDS, then the application in an RTX thread.
+ * DevKit-E8 (M55_HP) board bring-up for the object detection demo: the
+ * Secure Enclave link, the clocks, the MIPI DPHY power for the panel and the
+ * camera, the USB PHY when the layer's SDS over USB is in the build (VBAT
+ * power control, as the Ensemble pack's DevKit-E8 layer does it), then the
+ * application in an RTX thread.
  *---------------------------------------------------------------------------*/
 
 #include "RTE_Components.h"
@@ -128,9 +128,9 @@ int main(void)
     #endif
 
 #ifdef RTE_CMSIS_RTOS2
-    /* The application's threads and the SDS Stream component need
-       CMSIS-RTOS2: run the application in an RTX thread. Its stack lives in
-       the bulk SRAM next to the ExecuTorch pools. */
+    /* The application's threads need CMSIS-RTOS2: run the application in
+       an RTX thread. Its stack lives in the bulk SRAM next to the ExecuTorch
+       pools. */
     osKernelInitialize();
     osThreadNew(app_thread, NULL, &app_thread_attr);
     osKernelStart();

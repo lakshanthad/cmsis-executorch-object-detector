@@ -1,67 +1,44 @@
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Traffic counter with ExecuTorch on the Ethos-U: Ultralytics YOLO26n finds
-# the vehicles in each frame, a tracker counts them as they cross a line
-# (traffic/traffic.cproject.yml, documentation/traffic-counter.md). Two
-# targets with the same Cortex-M55 + Ethos-U55-256 pair and the same AI layer:
-# the Alif Ensemble E7 AppKit (target-type AppKit-E7), and the Corstone-300
-# FVP (target-type SSE-300-U55), which runs the detector on the test image
-# without a board. A third, the Alif Ensemble E8 DevKit (target-type
-# DevKit-E8), runs the same application with the model on the E8's
-# Ethos-U85-256 (AI layer ai_layer_u85/). Three steps build it:
+# Object detection with ExecuTorch on the Ethos-U85 of the Alif Ensemble E8
+# DevKit: the COCO-pretrained Ultralytics YOLO26n with all 80 classes, from
+# the camera to the panel (detect/detect.cproject.yml,
+# documentation/object-detection.md). The AI layer ai_layer_detect/ is the
+# program of `yolo export format=ethos`, imported by
+# `python detect/make_ai_layer.py`. Two steps build it:
 #
-#   cbuild setup cmsis-executorch.csolution.yml --active AppKit-E7
-#   python create_ai_layer.py cmsis-executorch.cbuild-mlops.yml
-#   cbuild cmsis-executorch.csolution.yml --active AppKit-E7
-#
-# For the DevKit-E8, the second step is
-# `python create_ai_layer.py ai_layer_u85/cmsis-executorch.cbuild-mlops.yml`
-# and the third builds with --active DevKit-E8.
-#
-# The DevKit-E8 also runs an object detection demo (detect/detect.cproject.yml,
-# target set DevKit-E8@detect): YOLO26n with all 80 COCO classes from the
-# camera to the panel, AI layer ai_layer_detect/: the program of
-# `yolo export format=ethos`, imported by `python detect/make_ai_layer.py`.
-#
-# The `mlops:` node below makes `cbuild setup` emit the *.cbuild-mlops.yml;
-# create_ai_layer.py reads the NPU and Vela settings from it, exports the model
-# from PyTorch in the project's venv and writes the AI layer.
+#   python detect/make_test_image.py
+#   cbuild cmsis-executorch.csolution.yml --active DevKit-E8 --packs
 solution:
   created-for: CMSIS-Toolbox@2.14.1
   cdefault:
   compiler: AC6
 
   packs:
-    # Pinned exactly: the pack's C++ runtime and the Python exporter pinned in
-    # requirements.txt must be the same ExecuTorch version, or the .pte fails
-    # to load. `cbuild setup --packs` fetches it from the public index.
+    # Pinned exactly: a program only loads in the runtime of the ExecuTorch
+    # release that exported it, and the venv of requirements.txt has the same
+    # version. `cbuild --packs` fetches it from the public index.
     - pack: PyTorch::ExecuTorch@1.5.1
     - pack: ARM::CMSIS
     - pack: ARM::CMSIS-Compiler
-    # BSP of the Corstone-300 FVP target. The layer lists it too; naming it
-    # here keeps the mlops: simulator target resolvable when the AppKit-E7 is
-    # the active target-type.
-    - pack: ARM::V2M_MPS3_SSE_300_BSP@1.5.0
-    # DFP + BSP of the Alif Ensemble E7 AppKit and E8 DevKit, and the Vela
-    # configuration of their NPUs (ensemble_vela.ini).
+    # DFP + BSP of the Alif Ensemble E8 DevKit.
     - pack: AlifSemiconductor::Ensemble@^2.2.0-0
 
   target-types:
-    # Alif Ensemble E7 AppKit (AK-E7-AIML, Gen 2): the Cortex-M55 HP core with
-    # its Ethos-U55-256, the 480x800 panel, an MT9M114 camera module. The
-    # Secure Enclave has to boot the HP core from its MRAM region:
-    # .alif/M55_HP_mram_cfg_e7.json, the "Install M55_HP debug stubs (AppKit-E7)" task.
-    - type: AppKit-E7
-      board: Alif Semiconductor::AppKit-E7-AIML
-      device: Alif Semiconductor::AE722F80F55D5LS:M55_HP
+    # Alif Ensemble E8 DevKit (DK-E8): the Cortex-M55 HP core with the E8's
+    # Ethos-U85-256, the ILI9806E 480x800 panel, an MT9M114 camera module.
+    # The Secure Enclave has to boot the HP core from its MRAM region:
+    # .alif/M55_HP_mram_cfg_e8.json, the "Install M55_HP debug stubs (DevKit-E8)" task.
+    - type: DevKit-E8
+      board: Alif Semiconductor::DevKit-E8
+      device: Alif Semiconductor::AE822FA0E5597LS0:M55_HP
       variables:
-        - Board-Layer: $SolutionDir()$/board/AppKit-E7/Board-Traffic.clayer.yml
-        - AI-Layer: $SolutionDir()$/ai_layer/ai_layer.clayer.yml
+        - Board-Layer: $SolutionDir()$/board/DevKit-E8/Board.clayer.yml
       target-set:
         - set:
           images:
-            - project-context: traffic.Release
+            - project-context: detect.Release
           debugger:
             name: J-Link Server
             # SWD at 4 MHz is the pack's <debugProbe> setting for the Ensemble
@@ -70,78 +47,6 @@ solution:
             protocol: swd
             clock: 4000000
             start-pname: M55_HP
-
-    # Alif Ensemble E8 DevKit (DK-E8): the Cortex-M55 HP core with the E8's
-    # Ethos-U85-256, the ILI9806E 480x800 panel, an MT9M114 camera module.
-    # The AI layer is ai_layer_u85/, exported for the Ethos-U85 from its own
-    # ai_layer_u85/cmsis-executorch.cbuild-mlops.yml (the mlops: node below
-    # describes the Ethos-U55 of the AppKit-E7 and the FVP). The Secure
-    # Enclave has to boot the HP core from its MRAM region:
-    # .alif/M55_HP_mram_cfg_e8.json, the "Install M55_HP debug stubs (DevKit-E8)" task.
-    - type: DevKit-E8
-      board: Alif Semiconductor::DevKit-E8
-      device: Alif Semiconductor::AE822FA0E5597LS0:M55_HP
-      variables:
-        - Board-Layer: $SolutionDir()$/board/DevKit-E8/Board-Traffic.clayer.yml
-        - AI-Layer: $SolutionDir()$/ai_layer_u85/ai_layer.clayer.yml
-      target-set:
-        - set:
-          images:
-            - project-context: traffic.Release
-          debugger:
-            name: J-Link Server
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HP
-        # The object detection demo (detect/detect.cproject.yml): YOLO26n with
-        # the 80 COCO classes, camera to panel. Same MRAM region, so the same
-        # debug stubs boot it: build and load DevKit-E8@detect.
-        - set: detect
-          images:
-            - project-context: detect.Release
-          debugger:
-            name: J-Link Server
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HP
-
-    # Corstone-300 (SSE-300) with a Cortex-M55 and an Ethos-U55-256, the NPU
-    # configuration of the E7's HP core, simulated on the Arm FVP. No camera,
-    # panel or SDS: the traffic counter runs the test image through the
-    # detector and the tracker for a few frames, prints the detections and
-    # ends the simulation (board/Corstone-300/Board-Traffic.clayer.yml).
-    - type: SSE-300-U55
-      board: ARM::V2M-MPS3-SSE-300-FVP
-      device: ARM::SSE-300-MPS3
-      variables:
-        - Board-Layer: $SolutionDir()$/board/Corstone-300/Board-Traffic.clayer.yml
-        - AI-Layer: $SolutionDir()$/ai_layer/ai_layer.clayer.yml
-      target-set:
-        - set:
-          images:
-            - project-context: traffic.Release
-          debugger:
-            name: Arm-FVP
-            # The model is its own GDB server (plugins/GDBServer.so, MDK FVP
-            # models 11.32.23+). fvp.sh resolves that plugin when VS Code was
-            # not started from a `vcpkg activate` shell, line-buffers the
-            # model's stdout so the debug adapter sees the "Listening" banner,
-            # and on macOS runs the model in Docker (Arm ships no macOS build).
-            # On Windows point this straight at FVP_Corstone_SSE-300_Ethos-U55.exe.
-            model: ${workspaceFolder}/.vscode/fvp.sh
-            config-file: board/Corstone-300/fvp_config.txt
-            args: "--simlimit 600"
-
-  misc:
-    # CMSIS-Toolbox 2.14.1 passes -mfpu=fpv5-sp-d16 to Clang for the Cortex-M55,
-    # a single-precision FPU on a core with a double-precision one and MVE;
-    # LLVM crashes on some kernels with that combination. The later option
-    # wins, so name the FPU explicitly (newer toolboxes leave it to -mcpu).
-    - for-compiler: CLANG
-      C-CPP:
-        - -mfpu=fp-armv8-fullfp16-d16
-      ASM:
-        - -mfpu=fp-armv8-fullfp16-d16
 
   build-types:
     - type: Debug
@@ -155,34 +60,4 @@ solution:
       optimize: speed
 
   projects:
-    - project: ./traffic/traffic.cproject.yml
-    # The object detection demo, on the DevKit-E8 only (its AI layer is for
-    # the E8's Ethos-U85): target set DevKit-E8@detect.
     - project: ./detect/detect.cproject.yml
-      for-context: +DevKit-E8
-
-  # MLOps information: exported to cmsis-executorch.cbuild-mlops.yml by
-  # `cbuild setup ... --active AppKit-E7`. Retarget the NPU here and
-  # create_ai_layer.py picks it up on its next run. The FVP's Ethos-U55-256
-  # runs the same command stream; Vela's system configuration only steers the
-  # scheduling for the E7's memories.
-  # https://open-cmsis-pack.github.io/cmsis-toolbox/build-overview/#mlops-information
-  mlops:
-    description: YOLO26n vehicle detector of the traffic counter for the Ethos-U55
-      of the Ensemble E7's M55-HP
-    npu:
-      type: Ethos-U55
-    vela:
-      # With the Ensemble pack in the solution, cbuild setup copies its Vela
-      # configuration to .cmsis/ensemble_vela.ini and emits it, together with
-      # --accelerator-config ethos-u55-256. RTSS_HP_SRAM_MRAM is the HP core's
-      # NPU in that file: the scratch in the SRAM, the weights in the MRAM.
-      system: RTSS_HP_SRAM_MRAM
-      memory: Shared_Sram
-    model:
-      clayer: $AI-Layer$
-      name: TrafficVehicles
-    hardware:
-      target: AppKit-E7 # named explicitly: the released 2.14.1 detects no hardware target
-    simulator:
-      target: SSE-300-U55

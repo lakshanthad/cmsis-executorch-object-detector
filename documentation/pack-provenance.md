@@ -21,23 +21,23 @@ care of it on a fresh clone. To install it by hand:
 cpackget add PyTorch::ExecuTorch@1.5.1
 ```
 
-The version is pinned exactly, in `cmsis-executorch.csolution.yml` and
-`cmsis-executorch.cproject.yml`:
+The version is pinned exactly, in `cmsis-executorch.csolution.yml`,
+`detect/detect.cproject.yml` and the generated
+`ai_layer_detect/ai_layer.clayer.yml`:
 
 ```yaml
 packs:
   - pack: PyTorch::ExecuTorch@1.5.1
 ```
 
-Both must agree. The pin is exact rather than a `@^1.5.1` range because the
+All three must agree. The pin is exact rather than a `@^1.5.1` range because the
 pack's C++ runtime and the Python exporter have to be the *same* ExecuTorch
 version — see [Moving to a new ExecuTorch version](#moving-to-a-new-executorch-version).
 
-`create_ai_layer.py` reads the installed pack's `.pdsc` out of the pack root
-(`$CMSIS_PACK_ROOT`, or cpackget's default) to find out which operator
-components exist. It reads the version `cbuild setup` resolved, taken from
-`cmsis-executorch.cbuild-pack.yml`, so a pack root holding several
-ExecuTorch versions cannot make it read the wrong one.
+`detect/make_ai_layer.py` reads the installed pack's `.pdsc` out of the pack
+root (`$CMSIS_PACK_ROOT`, or cpackget's default) to find out which operator
+components exist. It takes the version from the csolution's pin, so a pack
+root holding several ExecuTorch versions cannot make it read the wrong one.
 
 ## What is in the pack
 
@@ -51,7 +51,7 @@ ExecuTorch versions cannot make it read the wrong one.
 | `LICENSE` | Upstream BSD-3-Clause (the example code around it is Apache-2.0) |
 
 It is a **source** pack: nothing is prebuilt. Every operator is a selectable
-component, which is what lets `create_ai_layer.py` narrow the link to
+component, which is what lets `detect/make_ai_layer.py` narrow the link to
 exactly the kernels a given `.pte` needs.
 
 ## Building a pack yourself
@@ -120,30 +120,29 @@ cpackget add pack-output/PyTorch.ExecuTorch.<version>.pack
 
 The pack's C++ runtime and the Python exporter must come from the *same*
 ExecuTorch version — a `.pte` produced by a different version than the runtime
-that loads it will fail at load time, or worse, at inference time. Four steps,
+that loads it will fail at load time, or worse, at inference time. Five steps,
 in order:
 
 1. **Install the new pack** — `cpackget add PyTorch::ExecuTorch@<new>`, or
    build one yourself (above) if the version is not published.
-2. **Update both pins** — `PyTorch::ExecuTorch@<new>` in the csolution and in
-   the cproject.
+2. **Update the pins**: `PyTorch::ExecuTorch@<new>` in the csolution and in
+   `detect/detect.cproject.yml`.
 3. **Update the Python pins**: `executorch`, `torch` and `torchao` in
    `requirements.txt`, following the new release's `install_requirements.py`;
    `requirements-arm-tosa.txt` (the TOSA serializer and its flatbuffers pin)
    only changes when the Arm backend's `requirements-arm-tosa.txt` does.
-4. **Rebuild the venv, the AI layer and the project:**
+4. **Rebuild the venv** with `./setup_venv.sh --recreate`, and install
+   Ultralytics into it again as in the README.
+5. **Export the model again, import it and build:**
 
    ```bash
-   ./setup_venv.sh --recreate
-   cbuild setup cmsis-executorch.csolution.yml --active AppKit-E7 --packs
-   python3 create_ai_layer.py cmsis-executorch.cbuild-mlops.yml
-   cbuild cmsis-executorch.csolution.yml --active AppKit-E7
-   cbuild cmsis-executorch.csolution.yml --active SSE-300-U55
+   .venv/bin/yolo export model=yolo26n.pt format=ethos name=ethos-u85-256 imgsz=416 data=coco128.yaml
+   .venv/bin/python detect/make_ai_layer.py yolo26n_ethos_model
+   cbuild cmsis-executorch.csolution.yml --active DevKit-E8 --packs
    ```
 
-   A changed operator set simply shows up in the regenerated
-   `ai_layer/ai_layer.clayer.yml`.
+   A changed operator set shows up in the regenerated
+   `ai_layer_detect/ai_layer.clayer.yml`.
 
-Finally, update the version wherever it appears in prose: the README
-(Prerequisites and the pack-version note), the csolution header comment and
-this page.
+Finally, update the version wherever it appears in prose: the README,
+`documentation/object-detection.md`, the csolution comment and this page.

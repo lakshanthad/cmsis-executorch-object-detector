@@ -3,23 +3,28 @@
 ; CMSIS-Toolbox through the regions entry of the layer linker node, which
 ; also makes the toolbox preprocess this .src file with the project defines.
 
-/* ../DevKit-E8/linker_ac6_yolo.sct.src for the Ensemble E7 (AppKit-E7,
-   traffic/traffic.cproject.yml). The MRAM is laid out as on the E8: the
-   YOLO26n program is a 2.4 MB constant, more than the 2 MB HP region, so the
-   code region runs on into the MRAM user region (0x80400000, 1.5 MB) and ends
+/* The MRAM layout of the object detection demo on the Ensemble E8
+   (DevKit-E8, detect/detect.cproject.yml). The YOLO26n program for the
+   Ethos-U85 is a 2.4 MB constant, more than the 2 MB HP region, so the code
+   region runs on into the MRAM user region (0x80400000, 1.5 MB) and ends
    64 kB below the top of the MRAM, where the Secure Enclave's application
-   package (the boot table and the debug stubs, .alif/) lives.
-   The E7's SRAM0 (4 MB at 0x02000000) and SRAM1 (2.5 MB at 0x08000000) are
-   two regions: SRAM0 holds the ExecuTorch pools, the thread stacks and both
-   frame buffers; SRAM1, not initialised by the C library (the application
-   asks the Secure Enclave to power it before the first use), the camera's
-   raw frames and the model input slots (.bss.sram1). The first 4 kB of SRAM0
-   stay free: the boot configuration loads the Cortex-A32 stub there. */
+   package (the boot table and the debug stubs, .alif/) lives. The pack's MPU
+   table maps the user region as Device memory, so the program (ER_MODEL) is
+   the only thing placed there: the CPU must not read constants from it
+   unaligned.
+   The E8's SRAM0 (4 MB at 0x02000000) and SRAM1 (4 MB at 0x02400000) are
+   contiguous, but they stay two regions: the Secure Enclave leaves SRAM1
+   unpowered, and a store to it stalls the bus. SRAM0 holds the ExecuTorch
+   pools, the thread stacks, the camera frames and both frame buffers; SRAM1,
+   not initialised by the C library (the application asks the Secure Enclave
+   to power it before the first use), the model input slots and the NPU
+   scratch (.bss.sram1). The first 4 kB of SRAM0 stay free: the boot
+   configuration loads the Cortex-A32 stub there. */
 
-#define TRAFFIC_MRAM_END (APP_MRAM_USER_BASE + APP_MRAM_USER_SIZE - 0x10000)
+#define APP_MRAM_END (APP_MRAM_USER_BASE + APP_MRAM_USER_SIZE - 0x10000)
 
 #define __ROM_BASE      APP_MRAM_HP_BASE
-#define __ROM_SIZE      (TRAFFIC_MRAM_END - APP_MRAM_HP_BASE)
+#define __ROM_SIZE      (APP_MRAM_END - APP_MRAM_HP_BASE)
 
 #define __ITCM_BASE     APP_ITCM_BASE
 #define __ITCM_SIZE     APP_HP_ITCM_SIZE

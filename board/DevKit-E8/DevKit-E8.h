@@ -16,7 +16,7 @@
  * limitations under the License.
  *
  * CMSIS target header of the DevKit-E8 layer: only the USART the Ensemble
- * board files name for stdio (the traffic counter's console is a log buffer,
+ * board files name for stdio (the application's console is a log buffer,
  * retarget_stdio_log.c). The pack's DevKit-E8 layer has the full pin-out.
  *---------------------------------------------------------------------------*/
 
