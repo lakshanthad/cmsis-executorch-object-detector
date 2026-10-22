@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
-"""Print the console of the traffic counter on the AppKit-E7 while it runs.
+"""Print the console of the traffic counter on the AppKit-E7 or the DevKit-E8 while it runs.
 
     python tools/console_log.py out/traffic/AppKit-E7/Release/traffic.axf.map [--follow SECONDS]
+    python tools/console_log.py out/traffic/DevKit-E8/Release/traffic.axf.map [--follow SECONDS]
 
-The AppKit-E7 board layer retargets stdio to board/AppKit-E7/retarget_stdio_log.c:
-the `console_log` ring buffer in the DTCM, because SW4 stays on SEUART for the
+The board layers retarget stdio to board/<board>/retarget_stdio_log.c: the
+`console_log` ring buffer in the DTCM, because SW4 stays on SEUART for the
 Secure Enclave tools and UART4 is then not connected to the host. This script
 finds the buffer in the linker map and reads it through the J-Link (J-Link
-Commander, the core keeps running). $JLINK_DEVICE names another J-Link device.
+Commander, the core keeps running). The J-Link device is the HP core of the
+board whose target-type folder the map is in; $JLINK_DEVICE names another one.
 To program an image without the debugger, see tools/setools_mram.py.
 """
 
@@ -26,7 +28,12 @@ import tempfile
 import time
 from pathlib import Path
 
-JLINK_DEVICE = os.environ.get("JLINK_DEVICE", "AE722F80F55D5LS_M55_HP")  # the AppKit-E7's HP core
+# The HP core of each board, by the target-type folder of the image (out/<project>/<target-type>/...).
+JLINK_DEVICES = {
+    "AppKit-E7": "AE722F80F55D5LS_M55_HP",
+    "DevKit-E8": "AE822FA0E5597LS0_M55_HP",
+}
+JLINK_DEVICE = os.environ.get("JLINK_DEVICE", "")
 
 
 def console_log_address(map_file: Path) -> int:
@@ -89,6 +96,10 @@ def main() -> None:
     parser.add_argument("map", type=Path, help="the image's linker map (traffic.axf.map)")
     parser.add_argument("--follow", type=float, default=0.0, metavar="SECONDS", help="keep reading for this long")
     args = parser.parse_args()
+    global JLINK_DEVICE
+    if not JLINK_DEVICE:
+        board = next((part for part in args.map.resolve().parts if part in JLINK_DEVICES), "AppKit-E7")
+        JLINK_DEVICE = JLINK_DEVICES[board]
     if not shutil.which("JLinkExe"):
         sys.exit("JLinkExe is not on the PATH")
     log(args.map, args.follow)

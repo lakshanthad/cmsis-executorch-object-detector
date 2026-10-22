@@ -1,0 +1,169 @@
+# Copyright 2026 Arm Limited and/or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Alif Ensemble E8 DevKit (DK-E8) board bring-up for the traffic counter
+# (traffic/traffic.cproject.yml), on the Cortex-M55 high-performance (HP)
+# core with the E8's Ethos-U85-256. The AppKit-E7 layer (../AppKit-E7) with
+# the E8's pack configuration: the display (CDC200 -> MIPI DSI -> ILI9806E
+# 480x800), the camera (the kit's MT9M114 module, 640x480 RGB565 over MIPI
+# CSI-2 into the CPI, a snapshot per frame as on the E7, traffic/camera.c),
+# the console in a log buffer that the debugger reads (SW4 stays on SEUART
+# for the Secure Enclave tools), SDS over the SoC USB connector, and a
+# scatter file whose code region runs on into the MRAM user region for the
+# 2.4 MB YOLO26n program.
+#
+# What differs from the AppKit-E7: the NPU is the E8's Ethos-U85 (ETHOSU85,
+# NPU_HG_BASE, ethos_setup.c) with the AI layer ai_layer_u85/; the Ethos-U
+# driver's default region routing applies (the command stream and the
+# weights in the MRAM through the NPU's EXT port, the scratch in the SRAM);
+# no IMAGE_PANEL_TURN_180 (the DevKit-E8's panel shows the picture upright
+# as drawn, checked on the board); the USB PHY is powered through VBAT
+# (main.c); SRAM1 is 4 MB at 0x02400000, right after SRAM0.
+#
+# RTE/ holds the configuration of the pack's DevKit-e8 M55_HP layer (its
+# Conductor pins.h, gpios.h and board_defs.h, its RTE_Device.h) with one
+# change: RTE_MT9M114_CAMERA_SENSOR_MIPI_IMAGE_CONFIG 3 (640x480 RGB565 from
+# the sensor's ISP; the pack's 1 is 1280x720 RAW8).
+layer:
+  type: Board
+  description: DevKit-E8 board setup for the traffic counter on M55_HP with the Ethos-U85
+  for-board: Alif Semiconductor::DevKit-E8
+  for-device: Alif Semiconductor::AE822FA0E5597LS0:M55_HP
+  device: :M55_HP
+
+  processor:
+    trustzone: off
+
+  connections:
+    - connect: DevKit-E8 Board
+      provides:
+        - STDIN
+        - STDOUT
+        - STDERR
+        - Heap: 98304
+
+  define:
+    - CMSIS_target_header: \"DevKit-E8.h\"
+    - ETHOSU85
+    # The application's ExecuTorch pools, the RTX thread stacks, the camera
+    # frames and the two panel buffers go into SRAM0 (4 MB, NPU-accessible,
+    # behind the D-cache).
+    - APP_POOL_SECTION: \".bss.ai_pool\"
+    - APP_HAS_DISPLAY: 1
+    - APP_FRAMEBUFFER_SECTION: \".bss.lcd_frame_buf\"
+    - APP_DISPLAY_WIDTH: 480
+    - APP_DISPLAY_HEIGHT: 800
+    - APP_THREAD_STACK_SIZE: 0x8000
+    # The camera: the MT9M114 over MIPI CSI-2 into the CPI, 640x480 RGB565,
+    # two buffers the application swaps at each frame (traffic/camera.c).
+    - APP_HAS_CAMERA: 1
+    # The panel's MADCTL (0x36) value, written before the video stream starts.
+    # On the ILI9806E in video mode only bit 0 does anything: it mirrors the
+    # panel along its long axis (the pack's panel driver sets 0x01, mirrored).
+    # 0x00 shows the frame buffer as drawn.
+    - TRAFFIC_LCD_MADCTL: 0x00
+    # No IMAGE_PANEL_TURN_180 (traffic/image.c): unlike the AppKit-E7's, this
+    # panel shows the frame buffer upright as drawn (checked on the board).
+    # SDS recording and playback over the SoC USB connector (J2). The MDK USB
+    # middleware takes the driver index and the speed from these (the SDS USB
+    # layer expects a board layer to provide them): Driver_USBD0, high-speed.
+    - APP_HAS_SDS: 1
+    - APP_HAS_JOYSTICK: 1 # the line moves with the joystick (traffic/joystick.c)
+    # The NPU scratch in SRAM1 so that both panel buffers and the camera
+    # frames fit SRAM0.
+    - APP_TEMP_POOL_SECTION: \".bss.sram1\"
+    - CMSIS_DRIVER_USBD: 0
+    - CMSIS_DRIVER_USBD_HS: 1
+
+  packs:
+    - pack: AlifSemiconductor::Ensemble@^2.2.0-0
+    - pack: ARM::CMSIS@^6.2.0
+    - pack: ARM::CMSIS-Compiler@^2.1.0
+    - pack: ARM::ethos-u-core-driver@^1.26.2
+    - pack: ARM::CMSIS-RTX@^5.9.1
+    - pack: ARM::SDS@^3.1.0
+    - pack: Keil::MDK-Middleware@^8.3.0
+
+  misc:
+    - for-compiler: AC6
+      Link:
+        - "--diag_suppress 6312,6314,6329,6848"
+
+  components:
+    - component: Device:Startup
+
+    - component: BSP:Board Config
+    - component: BSP:DevKit Config&DevKit-e8
+
+    - component: CMSIS:CORE
+
+    - component: CMSIS Driver:USART
+    # The ILI9806E panel driver and the camera sensor drive their reset,
+    # backlight and power pins through the CMSIS GPIO driver.
+    - component: CMSIS Driver:GPIO
+      define:
+        - CMSIS_GPIO_DISABLE_EVENTS
+
+    # RTX5: app_main runs in an RTX thread (main.c); the SDS Stream component needs it too.
+    - component: CMSIS:RTOS2:Keil RTX5&Source
+    - component: CMSIS:OS Tick:SysTick
+    # SDS data streams over the SoC's USB (the SoC USB connector J2, a
+    # custom-class bulk device, MDK USB middleware on the pack's USB device
+    # driver), read and written by SDSIO-Server in its usb mode.
+    - component: SDS:Stream&CMSIS-RTOS2
+    - component: SDS:IO:USB&MDK USB
+    - component: USB&MDK:CORE
+    - component: USB&MDK:Device
+    - component: USB&MDK:Device:Custom Class
+    - component: CMSIS Driver:USB Device
+
+    - component: CMSIS-Compiler:CORE
+    - component: CMSIS-Compiler:STDERR:Custom
+    - component: CMSIS-Compiler:STDIN:Custom
+    - component: CMSIS-Compiler:STDOUT:Custom
+
+    - component: Device:SOC Peripherals:MHU
+    - component: Device:SOC Peripherals:PINCONF
+
+    # Display: CDC200 controller -> MIPI DSI -> ILI9806E panel (the pack's
+    # RTE_Device.h in this layer configures RGB888, 480x800, 60 fps).
+    - component: BSP:External peripherals:ILI9806E LCD panel
+    - component: Device:SOC Peripherals:CDC
+    - component: Device:SOC Peripherals:GPIO
+    - component: Device:SOC Peripherals:MIPI DSI
+    - component: Device:SOC Peripherals:MIPI DSI CSI2 DPHY
+
+    # Camera: the kit's MT9M114 module (I2C1 for its registers, over MIPI)
+    # -> MIPI CSI-2 -> CPI -> SRAM0, 640x480 RGB565 from the sensor's ISP
+    # (RTE_MT9M114_CAMERA_SENSOR_MIPI_IMAGE_CONFIG 3 in RTE_Device.h).
+    - component: BSP:External peripherals:CAMERA Sensor MT9M114
+    - component: CMSIS Driver:I2C
+    - component: Device:SOC Peripherals:CPI
+    - component: Device:SOC Peripherals:MIPI CSI2
+
+    - component: Machine Learning:NPU Support:Ethos-U Driver&Generic U85
+
+    - component: Services:Secure Enclave:core&Source
+    - component: Services:Secure Enclave:Initialization Helper&Source
+
+  groups:
+    - group: Board
+      files:
+        - file: ./main.c
+        - file: ./main.h
+        - file: ./DevKit-E8.h
+        - file: ./ethos_setup.c
+        # The console is a log buffer in the DTCM (console_log) that the debugger reads.
+        - file: ./retarget_stdio_log.c
+        - file: ./board_display.c
+        - file: ./board_display.h
+
+    - group: Ethos Interface
+      files:
+        - file: ./ethosu_cb_dcache.c
+
+  # AC6 only: the MRAM layout of the traffic counter (linker_ac6_traffic.sct.src).
+  linker:
+    - regions: ./RTE/Device/AE822FA0E5597LS0_M55_HP/app_mem_regions.h
+    - script: ./linker_ac6_traffic.sct.src
+      for-compiler: AC6

@@ -1,17 +1,23 @@
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Traffic counter with ExecuTorch on the Ethos-U55: Ultralytics YOLO26n finds
+# Traffic counter with ExecuTorch on the Ethos-U: Ultralytics YOLO26n finds
 # the vehicles in each frame, a tracker counts them as they cross a line
 # (traffic/traffic.cproject.yml, documentation/traffic-counter.md). Two
 # targets with the same Cortex-M55 + Ethos-U55-256 pair and the same AI layer:
 # the Alif Ensemble E7 AppKit (target-type AppKit-E7), and the Corstone-300
 # FVP (target-type SSE-300-U55), which runs the detector on the test image
-# without a board. Three steps build it:
+# without a board. A third, the Alif Ensemble E8 DevKit (target-type
+# DevKit-E8), runs the same application with the model on the E8's
+# Ethos-U85-256 (AI layer ai_layer_u85/). Three steps build it:
 #
 #   cbuild setup cmsis-executorch.csolution.yml --active AppKit-E7
 #   python create_ai_layer.py cmsis-executorch.cbuild-mlops.yml
 #   cbuild cmsis-executorch.csolution.yml --active AppKit-E7
+#
+# For the DevKit-E8, the second step is
+# `python create_ai_layer.py ai_layer_u85/cmsis-executorch.cbuild-mlops.yml`
+# and the third builds with --active DevKit-E8.
 #
 # The `mlops:` node below makes `cbuild setup` emit the *.cbuild-mlops.yml;
 # create_ai_layer.py reads the NPU and Vela settings from it, exports the model
@@ -32,8 +38,8 @@ solution:
     # here keeps the mlops: simulator target resolvable when the AppKit-E7 is
     # the active target-type.
     - pack: ARM::V2M_MPS3_SSE_300_BSP@1.5.0
-    # DFP + BSP of the Alif Ensemble E7 AppKit, and the Vela configuration
-    # of its NPUs (ensemble_vela.ini).
+    # DFP + BSP of the Alif Ensemble E7 AppKit and E8 DevKit, and the Vela
+    # configuration of their NPUs (ensemble_vela.ini).
     - pack: AlifSemiconductor::Ensemble@^2.2.0-0
 
   target-types:
@@ -56,6 +62,29 @@ solution:
             # SWD at 4 MHz is the pack's <debugProbe> setting for the Ensemble
             # kits. With JTAG the generated "CMSIS Load" task blocks on
             # JLinkExe's interactive JTAG-chain prompt.
+            protocol: swd
+            clock: 4000000
+            start-pname: M55_HP
+
+    # Alif Ensemble E8 DevKit (DK-E8): the Cortex-M55 HP core with the E8's
+    # Ethos-U85-256, the ILI9806E 480x800 panel, an MT9M114 camera module.
+    # The AI layer is ai_layer_u85/, exported for the Ethos-U85 from its own
+    # ai_layer_u85/cmsis-executorch.cbuild-mlops.yml (the mlops: node below
+    # describes the Ethos-U55 of the AppKit-E7 and the FVP). The Secure
+    # Enclave has to boot the HP core from its MRAM region:
+    # .alif/M55_HP_mram_cfg_e8.json, the "Install M55_HP debug stubs (DevKit-E8)" task.
+    - type: DevKit-E8
+      board: Alif Semiconductor::DevKit-E8
+      device: Alif Semiconductor::AE822FA0E5597LS0:M55_HP
+      variables:
+        - Board-Layer: $SolutionDir()$/board/DevKit-E8/Board-Traffic.clayer.yml
+        - AI-Layer: $SolutionDir()$/ai_layer_u85/ai_layer.clayer.yml
+      target-set:
+        - set:
+          images:
+            - project-context: traffic.Release
+          debugger:
+            name: J-Link Server
             protocol: swd
             clock: 4000000
             start-pname: M55_HP

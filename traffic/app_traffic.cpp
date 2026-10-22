@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Traffic counter with YOLO26n on the Ethos-U55 of the Alif Ensemble E7
- * (M55-HP, AppKit-E7), live from the camera to the panel, with SDS recording
- * and playback.
+ * (M55-HP, AppKit-E7), or on the Ethos-U85 of the Ensemble E8 (DevKit-E8),
+ * live from the camera to the panel, with SDS recording and playback.
  *
  * Each frame:
  *   1. the input: the newest camera frame (the ARX3A0's RAW8 Bayer, or an
@@ -178,6 +178,16 @@ inline uint32_t us(uint32_t c) { return static_cast<uint32_t>(static_cast<uint64
 
 enum Source { kTestImage = 0, kCamera = 1, kPlayback = 2 };
 
+// The NPU the board layer names (ETHOSU55 or ETHOSU85): for the console
+// banner, and upper case for the panel's header (the font has no lower case).
+#ifdef ETHOSU85
+#define TRAFFIC_NPU_NAME "Ethos-U85"
+#define TRAFFIC_NPU_LABEL "ETHOS-U85"
+#else
+#define TRAFFIC_NPU_NAME "Ethos-U55"
+#define TRAFFIC_NPU_LABEL "ETHOS-U55"
+#endif
+
 #ifdef APP_HAS_CAMERA
 // The camera thread: every camera frame turned into a model input in the slot
 // the vision thread is not reading. The vision thread takes the newest slot
@@ -280,7 +290,7 @@ void draw_status(uint8_t* fb, const traffic_counts_t& counts, const detector_sco
   image_fill(fb, 0, IMAGE_VIEW_TOP + IMAGE_VIEW, IMAGE_PANEL_W, IMAGE_PANEL_H, 0x000000U);
 
   char line[48];
-  image_text(fb, 12, 6, 2, "TRAFFIC COUNTER  YOLO26N  ETHOS-U55", kDim);
+  image_text(fb, 12, 6, 2, "TRAFFIC COUNTER  YOLO26N  " TRAFFIC_NPU_LABEL, kDim);
   snprintf(line, sizeof(line), "%lu", static_cast<unsigned long>(counts.total));
   image_text(fb, 12, 24, 5, line, kWhite);
   const char* dir0 = tracker_line_vertical() ? "RIGHT" : "DOWN";
@@ -436,7 +446,7 @@ extern "C" volatile int traffic_camera_enable = TRAFFIC_CAMERA_AUTOSTART;
 extern "C" int app_main(void) {
   setvbuf(stdout, nullptr, _IONBF, 0);
   memset(const_cast<TrafficStatus*>(&traffic_status), 0, sizeof(traffic_status));
-  printf("Traffic counter: YOLO26n on the Ethos-U55, input %dx%d RGB888, core %lu MHz, line at %d %s\n", kSize, kSize,
+  printf("Traffic counter: YOLO26n on the " TRAFFIC_NPU_NAME ", input %dx%d RGB888, core %lu MHz, line at %d %s\n", kSize, kSize,
          static_cast<unsigned long>(SystemCoreClock / 1000000U), TRAFFIC_LINE_POS,
          TRAFFIC_LINE_VERTICAL ? "vertical" : "horizontal");
 

@@ -85,8 +85,10 @@ def executorch_version(mlops_file: Path) -> str:
     pack_file = mlops_file.with_name(mlops_file.name.replace(".cbuild-mlops.yml", ".cbuild-pack.yml"))
     # After a version bump the lock file still lists the old pin as resolved
     # by its own selector: the csolution's pin decides (the lock file may be a
-    # link into the solution directory).
-    for csolution in pack_file.resolve().parent.glob("*.csolution.yml"):
+    # link into the solution directory). A hand-written cbuild-mlops.yml in a
+    # layer directory (ai_layer_u85/) has the csolution one level up.
+    folder = pack_file.resolve().parent
+    for csolution in [*folder.glob("*.csolution.yml"), *folder.parent.glob("*.csolution.yml")]:
         if pinned := re.search(rf"{re.escape(PACK)}@(\d+\.\d+\.\d+\S*)", csolution.read_text()):
             return pinned.group(1)
     fallback = None

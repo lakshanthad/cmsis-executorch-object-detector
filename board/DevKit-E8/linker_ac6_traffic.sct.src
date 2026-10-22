@@ -1,0 +1,127 @@
+; Preprocessed by the CMSIS-Toolbox, not by the armlink "#!" line:
+; app_mem_regions.h (the RTE copy in this layer) is force-included by the
+; CMSIS-Toolbox through the regions entry of the layer linker node, which
+; also makes the toolbox preprocess this .src file with the project defines.
+
+/* ../AppKit-E7/linker_ac6_traffic.sct.src for the Ensemble E8 (DevKit-E8,
+   traffic/traffic.cproject.yml). The YOLO26n program for the Ethos-U85 is a
+   2.4 MB constant, more than the 2 MB HP region, so the code region runs on
+   into the MRAM user region (0x80400000, 1.5 MB) and ends 64 kB below the top
+   of the MRAM, where the Secure Enclave's application package (the boot
+   table and the debug stubs, .alif/) lives. The pack's MPU table maps the
+   user region as Device memory, so the program (ER_MODEL) is the only thing
+   placed there: the CPU must not read constants from it unaligned.
+   The E8's SRAM0 (4 MB at 0x02000000) and SRAM1 (4 MB at 0x02400000) are
+   contiguous, but they stay two regions: the Secure Enclave leaves SRAM1
+   unpowered, and a store to it stalls the bus. SRAM0 holds the ExecuTorch
+   pools, the thread stacks, the camera frames and both frame buffers; SRAM1,
+   not initialised by the C library (the application asks the Secure Enclave
+   to power it before the first use), the model input slots and the NPU
+   scratch (.bss.sram1). The first 4 kB of SRAM0 stay free: the boot
+   configuration loads the Cortex-A32 stub there. */
+
+#define TRAFFIC_MRAM_END (APP_MRAM_USER_BASE + APP_MRAM_USER_SIZE - 0x10000)
+
+#define __ROM_BASE      APP_MRAM_HP_BASE
+#define __ROM_SIZE      (TRAFFIC_MRAM_END - APP_MRAM_HP_BASE)
+
+#define __ITCM_BASE     APP_ITCM_BASE
+#define __ITCM_SIZE     APP_HP_ITCM_SIZE
+
+#define __RAM_BASE      APP_DTCM_BASE
+#define __RAM_SIZE      APP_HP_DTCM_SIZE
+
+#define __STACK_SIZE    0x00004000   /* 16 kB for main and the exception handlers; app_main runs in an RTX thread with its own 32 kB stack (main.c) */
+#define __HEAP_SIZE     APP_HP_HEAP_SIZE
+#define __APP_HEAP_SIZE 0x00008000
+
+/*----------------------------------------------------------------------------
+  User Stack & Heap boundary definition
+ *----------------------------------------------------------------------------*/
+#define __STACK_TOP     (__RAM_BASE + __RAM_SIZE)    /* starts at end of RAM */
+#define __HEAP_BASE     (AlignExpr(+0, 8))           /* starts after RW_RAM section, 8 byte aligned */
+#define __APP_HEAP_BASE (AlignExpr(+0, 8))           /* starts after HEAP, 8 byte aligned */
+
+/*----------------------------------------------------------------------------
+  Scatter File Definitions definition
+ *----------------------------------------------------------------------------*/
+
+#define __RW_BASE       __RAM_BASE
+#define __RW_SIZE      (__RAM_SIZE - __STACK_SIZE - __HEAP_SIZE - __APP_HEAP_SIZE)
+
+LR_ROM __ROM_BASE NOCOMPRESS __ROM_SIZE  {    ; load region size_region
+  ER_ROM_VECTORS  (AlignExpr(__ROM_BASE, 2048))  {   ; Vector Table
+    *vectors.o (RESET, +First)
+  }
+
+  ER_ROM (AlignExpr(+0, 8)) {                 ; load address = execution address
+   *(InRoot$$Sections)
+
+   ; These should be part of primary load region
+   *startup*.o (+RO)
+   *system*.o (+RO)
+   *sys_*.o (+RO)
+   *pm*.o (+RO)
+   *tgu*.o (+RO)
+   *mpu*.o (+RO)
+   *sau_tcm_ns_setup*.o (+RO)
+
+   .ANY (+RO)
+   .ANY (+XO)
+  }
+
+  ER_MODEL (AlignExpr(+0, 16)) {              ; the YOLO26n program, after everything else read-only:
+   *model_pte.o (+RO)                         ; it is the part that runs on into the MRAM user region
+  }
+
+  ITCM_RAM __ITCM_BASE __ITCM_SIZE  {                     ; RW code
+   ; Specify objects intended to execute out of ITCM
+  }
+
+  RW_RAM __RW_BASE __RW_SIZE  {                     ; RW data
+   .ANY (+RW +ZI)
+  }
+
+  NS_REGION_0  (AlignExpr(+0, TGU_BLOCK_SIZE)) { ; Non secure region 0
+    * (eth_buf)
+    * (usb_dma_buf)
+    * (sd_dma_buf)
+    * (.driver.usbd0)                     ; USB EP0 buffer (USBD0_BUF_MEM_LOCATE)
+    ; The USB controller reads and writes the DTCM only inside this non-secure
+    ; region: everything the SDS link hands to the USB DMA goes here too.
+    *sdsio_client_usb_mdk.o (+RW +ZI)     ; the bulk OUT buffer
+    *sdsio_client.o (+RW +ZI)             ; error data sent with the info command
+    *sds.o (+RW +ZI)                      ; the stream data block
+    * (.bss.os)                           ; RTX dynamic memory: the SDS thread's stack holds the headers it sends
+  }
+
+  NS_REGION_0_PAD  (AlignExpr(ImageLimit(NS_REGION_0), TGU_BLOCK_SIZE)) { ; Non secure region 0 Padding
+  }
+  ScatterAssert((ImageBase(NS_REGION_0_PAD) - ImageBase(NS_REGION_0) + ImageLength(RW_RAM)) < __RW_SIZE)
+
+#if __HEAP_SIZE > 0
+  ARM_LIB_HEAP  __HEAP_BASE EMPTY  __HEAP_SIZE  {   ; Reserve empty region for heap
+  }
+#endif
+
+  APP_HEAP  __APP_HEAP_BASE EMPTY  __APP_HEAP_SIZE {; Reserve empty region for application heap
+  }
+
+  ARM_LIB_STACK __STACK_TOP EMPTY -__STACK_SIZE {   ; Reserve empty region for stack
+  }
+
+  RW_SRAM0 (APP_SRAM0_BASE + 0x1000) (APP_SRAM0_SIZE - 0x1000)  {
+   * (.bss.ai_pool)                       ; ExecuTorch pools, stream buffers, thread stacks
+   * (.bss.lcd_crop_and_interpolate_buf)  ; LCD crop and interpolate image processing buffer.
+   * (.bss.lcd_frame_buf)                 ; the two LCD frame buffers
+  }
+
+  PADDING +0 OVERLAY ALIGN 16 FILL 0 16
+  {
+  }
+
+  ; Not initialised: the application powers SRAM1 before its first use.
+  RW_SRAM1 APP_SRAM1_BASE UNINIT APP_SRAM1_SIZE  {
+   * (.bss.sram1)                         ; model input slots, the NPU scratch
+  }
+}

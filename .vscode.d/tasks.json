@@ -72,6 +72,28 @@
             "problemMatcher": []
         },
         {
+            "label": "Alif: Install M55_HP debug stubs (DevKit-E8, single core configuration)",
+            "detail": "Programs the ATOC/MRAM stubs with Alif SETOOLS for the DevKit-E8's device (AE822FA0E5597LS0), so that the Secure Enclave boots the HP core from its MRAM region and J-Link can load and debug it. A boot table built for another part (the AppKit-E8's AE822FA0E5597BS0) is skipped by the Secure Enclave. Set SW4 to SEUART, set 'alif.setools.root' in your VS Code settings.",
+            "type": "shell",
+            "command": [
+                "cp './.alif/M55_HP_mram_cfg_e8.json' '${config:alif.setools.root}/build/config/M55_HP_mram_cfg_e8.json';",
+                "cp './.alif/M55_HP_mram_stub.bin' '${config:alif.setools.root}/build/images/M55_HP_mram_stub.bin';",
+                "cd '${config:alif.setools.root}';",
+                "./tools-config -p 'E8 (AE822FA0E5597LS0) - 5.5 MRAM / 9.75 SRAM';",
+                "./app-gen-toc -f 'build/config/M55_HP_mram_cfg_e8.json';",
+                "./app-write-mram -p ${input:discoverCOM};"
+            ],
+            "options": {
+                "shell": {
+                    "executable": "/bin/bash",
+                    "args": [
+                        "-c"
+                    ]
+                }
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "SDS: play recording to the board (USB)",
             "detail": "Plays CameraIn.<n>.sds of the chosen folder into the detector over the User USB (SDS:IO:USB firmware, board running) and records Detections.<n>.p.sds next to it. One SDSIO server at a time: stop any other playback first.",
             "type": "shell",

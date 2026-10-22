@@ -1,4 +1,4 @@
-# Traffic counter on the Alif AppKit-E7: YOLO26n on the Ethos-U55
+# Traffic counter on the Alif AppKit-E7 and DevKit-E8: YOLO26n on the Ethos-U
 
 An Alif Ensemble E7 AppKit (AK-E7-AIML, Gen 2) counts the vehicles its camera
 sees. Ultralytics YOLO26n, exported with ExecuTorch and compiled by Vela, runs
@@ -8,7 +8,11 @@ follows them from frame to frame and counts each one once, per class and
 direction, as it crosses a line on the picture. The panel shows the camera
 picture, the boxes, the line and the tallies, and the joystick moves the line.
 Over the board's User USB, SDS records the model inputs and detections, or
-plays a recorded clip back into the detector instead of the camera.
+plays a recorded clip back into the detector instead of the camera. The same
+application runs on the Alif Ensemble E8 DevKit (DK-E8), with the model
+compiled for the E8's Ethos-U85-256.
+
+On the AppKit-E7:
 
 | | |
 |---|---|
@@ -16,19 +20,29 @@ plays a recorded clip back into the detector instead of the camera.
 | Loop with the camera | 25 fps; the camera conversion runs while the NPU works |
 | SDS over USB | a 40-frame clip (20.7 MB) plays in about 8 s |
 
+On the DevKit-E8:
+
+| | |
+|---|---|
+| NPU | 15.3 ms per 416x416 frame (2.44 MB program in MRAM) |
+| Loop with the camera | 25 fps, the camera's rate; 46 fps on the test image without the camera |
+
 The repository is a fork of the Arm example
 [cmsis-executorch](https://github.com/Arm-Examples/cmsis-executorch): one CMSIS
-solution, `cmsis-executorch.csolution.yml`, with one project,
-`traffic/traffic.cproject.yml`, and two target-types with the same Cortex-M55
-and Ethos-U55-256:
+solution, `cmsis-executorch.csolution.yml`, with the traffic counter's
+project, `traffic/traffic.cproject.yml`, and three target-types, each a
+Cortex-M55 with an Ethos-U NPU:
 
 | Target-type | Hardware | Runs |
-|-------------|----------|------|
-| **AppKit-E7** | Alif Ensemble E7 AppKit, M55 HP core | the traffic counter: camera, panel, joystick, SDS |
-| **SSE-300-U55** | Corstone-300 on the Arm FVP | the detector and the tracker on the test image, without a board |
+|---|---|---|
+| **AppKit-E7** | Alif Ensemble E7 AppKit, M55 HP core, Ethos-U55-256 | the traffic counter: camera, panel, joystick, SDS |
+| **DevKit-E8** | Alif Ensemble E8 DevKit, M55 HP core, Ethos-U85-256 | the traffic counter: camera, panel (joystick and SDS built in, not yet tried) |
+| **SSE-300-U55** | Corstone-300 on the Arm FVP, Ethos-U55-256 | the detector and the tracker on the test image, without a board |
 
-Both use the same AI layer, `ai_layer/`. The full technical description of
-the traffic counter is [documentation/traffic-counter.md](documentation/traffic-counter.md).
+The AppKit-E7 and the FVP use the same AI layer, `ai_layer/`. The DevKit-E8
+uses `ai_layer_u85/`, the same model compiled by Vela for the Ethos-U85-256.
+The full technical description of the traffic counter is
+[documentation/traffic-counter.md](documentation/traffic-counter.md).
 
 ## 1. Host tools
 
@@ -49,8 +63,9 @@ the traffic counter is [documentation/traffic-counter.md](documentation/traffic-
    ```
 
 3. **SEGGER J-Link Software** V8.42 or later from
-   [segger.com](https://www.segger.com/downloads/jlink/). The board has an
-   on-board J-Link.
+   [segger.com](https://www.segger.com/downloads/jlink/). Both boards have an
+   on-board J-Link. The DevKit-E8 was tested with V9.74, which knows its
+   `AE822FA0E5597LS0`.
 4. Python `>=3.10,<3.14` for the test image and the tools, and for SDS the
    Python packages of SDSIO-Server (`utilities/requirements.txt` of the
    `ARM::SDS` 3.1.0 pack; the USB interface needs libusb). `ffmpeg` if you
@@ -62,13 +77,24 @@ the traffic counter is [documentation/traffic-counter.md](documentation/traffic-
 
 ## 2. Board
 
+AppKit-E7:
+
 - **PRG USB** to the host: power, the on-board J-Link and the Secure
   Enclave's UART.
 - **User USB (J1)** to the host for SDS recording and playback (optional).
 - The camera module the Gen 2 kit ships with, an MT9M114 on the MIPI
   connector, and the 480x800 MIPI DSI panel.
-- **SW4** on `SEUART` while SETOOLS runs. The application does not use a
-  UART: its console is a log buffer in the DTCM that the debugger reads.
+
+DevKit-E8:
+
+- **PRG USB (J3)** to the host: power, the on-board J-Link and the Secure
+  Enclave's UART.
+- **SoC USB (J2)** to the host for SDS recording and playback (optional).
+- The MT9M114 camera module on the MIPI CSI-2 connector and the 480x800 MIPI
+  DSI panel (ILI9806E).
+
+On both, **SW4** on `SEUART` while SETOOLS runs. The application does not
+use a UART: its console is a log buffer in the DTCM that the debugger reads.
 
 ## 3. Project and build
 
@@ -82,26 +108,36 @@ cd cmsis-executorch-traffic-counter
 `make_test_image.py` writes `traffic/test_image.c`, the image the detector
 runs on until the camera delivers (and the only input on the FVP). It is
 generated from a COCO photo that is not ours to redistribute, so it is not in
-the repository, and the build needs it. The AI layer `ai_layer/` is
-committed; regenerate it only after changing `model/traffic.py`. The weights
-are in the repository too (`model/yolo26n-noattn-vehicles.pt`):
+the repository, and the build needs it. The AI layers `ai_layer/` and
+`ai_layer_u85/` are committed; regenerate them only after changing
+`model/traffic.py`. The weights are in the repository too
+(`model/yolo26n-noattn-vehicles.pt`):
 
 ```bash
 cbuild setup cmsis-executorch.csolution.yml --active AppKit-E7 --packs
 .venv/bin/python create_ai_layer.py cmsis-executorch.cbuild-mlops.yml
+.venv/bin/python create_ai_layer.py ai_layer_u85/cmsis-executorch.cbuild-mlops.yml
 ```
+
+The first export is for the Ethos-U55 (the `mlops:` node of the csolution),
+the second for the DevKit-E8's Ethos-U85, from the hand-written
+`ai_layer_u85/cmsis-executorch.cbuild-mlops.yml`.
 
 Open the folder in VS Code and accept the pack installation
 (`PyTorch::ExecuTorch`, `AlifSemiconductor::Ensemble`, `ARM::SDS`,
 `Keil::MDK-Middleware`, and `ARM::V2M_MPS3_SSE_300_BSP` for the FVP). In the CMSIS view open **Manage Solution**, choose
-the target-type **AppKit-E7** and click **Apply**, then **Build**. From the
-command line:
+the target-type **AppKit-E7** or **DevKit-E8** and click **Apply**, then
+**Build**. From the command line:
 
 ```bash
 cbuild cmsis-executorch.csolution.yml --active AppKit-E7 --packs
 ```
 
-The image is `out/traffic/AppKit-E7/Release/traffic.axf`.
+```bash
+cbuild cmsis-executorch.csolution.yml --active DevKit-E8 --packs
+```
+
+The image is `out/traffic/<target-type>/Release/traffic.axf`.
 
 ## 4. Prepare the board once
 
@@ -121,6 +157,14 @@ configuration (with the E8's, the camera DMA cannot reach its buffers).
 same and programs the application itself through the Secure Enclave, without
 the J-Link.
 
+For the DevKit-E8 the task is **Alif: Install M55_HP debug stubs (DevKit-E8,
+single core configuration)**, with `.alif/M55_HP_mram_cfg_e8.json` and the
+SETOOLS default device configuration for the E8. A board whose table already
+boots the HP core from 0x80200000 (as on the DevKit-E8 this port was brought
+up on) needs no change. The task writes a stub over the start of the HP
+core's MRAM region, so load the application again after it.
+`tools/setools_mram.py` supports only the AppKit-E7.
+
 ## 5. Run and debug
 
 In the CMSIS view click **Run** or **Debug**: the J-Link loads the image into
@@ -128,7 +172,8 @@ MRAM and starts it. The panel shows the camera picture with the line and the
 tallies after a few seconds.
 
 - **Console:** `.venv/bin/python tools/console_log.py out/traffic/AppKit-E7/Release/traffic.axf.map`
-  prints the `console_log` buffer, with the tallies every 100 frames.
+  prints the `console_log` buffer, with the tallies every 100 frames. With
+  the map under `out/traffic/DevKit-E8/` it reads the DevKit-E8's HP core.
 - **Status:** the global `traffic_status` holds the tallies, the frame
   counters, the time of each step in microseconds, the camera state, the live
   tracks and the latest detections. Writing 1 to `traffic_reset_counts`
@@ -191,9 +236,15 @@ before starting the next.
 - **SETOOLS says "Revision is invalid":** `tools-config -p` reset the
   revision to A0. The AppKit-E7 is B4: the task and `tools/setools_mram.py`
   pass `-r B4`.
-- **The build fails in CMake** (`toolchain.cmake ... could not find requested
-  file`) after a CMSIS Solution extension update: delete `tmp/AppKit-E7` and
-  build again.
+- **The build fails in CMake** after a CMSIS Solution extension update
+  (`toolchain.cmake ... could not find requested file`): delete
+  `tmp/<target-type>` and build again.
+- **CMSIS Load or Debug says there is no CMSIS Load task** (no
+  `.vscode/tasks.json`, or `launch.json` still names the other board's
+  device): open **Manage Solution** in the CMSIS view and confirm the J-Link
+  debugger of the target-type, or run **CMSIS: Update Debug Tasks and Launch
+  Configurations**. The extension writes both files for the active
+  target-type.
 - **The debugger cannot start its GDB server:** another debug session holds
   the port. Stop it, or change the ports in the launch configuration.
 - **The first inference after a debugger reset reports error 35:** the NPU
@@ -210,10 +261,10 @@ before starting the next.
 The code is under the Apache License 2.0 ([LICENSE](LICENSE)). The YOLO26n
 weights come from Ultralytics and are under the AGPL-3.0: the fine-tuned
 checkpoint `model/yolo26n-noattn-vehicles.pt`, its architecture
-`model/yolo26n-noattn.yaml`, and the program compiled into `ai_layer/`;
-`model/` fetches the COCO-pretrained `yolo26n.pt` with the `ultralytics`
-package. `src/LICENSE-ExecuTorch` covers the ExecuTorch sources
-(BSD-3-Clause).
+`model/yolo26n-noattn.yaml`, and the programs compiled into `ai_layer/`
+and `ai_layer_u85/`; `model/` fetches the COCO-pretrained
+`yolo26n.pt` with the `ultralytics` package. `src/LICENSE-ExecuTorch` covers
+the ExecuTorch sources (BSD-3-Clause).
 
 ## Read on
 

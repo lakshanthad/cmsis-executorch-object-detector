@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # CI for the three-step flow (cbuild setup, create_ai_layer.py, cbuild): the
-# AI layer exported from a fresh clone, the traffic counter built for the
-# AppKit-E7 and for the Corstone-300 FVP, and run on the FVP.
+# AI layers exported from a fresh clone (Ethos-U55 and Ethos-U85), the traffic
+# counter built for the AppKit-E7, the DevKit-E8 and the Corstone-300 FVP, and
+# run on the FVP.
 name: Build and Run
 
 on:
@@ -18,10 +19,10 @@ env:
 
 jobs:
   # Linux only: the FVP needs an Arm user-based license, so matrixing this
-  # across hosts is not cheap. AC6 only: the AppKit-E7's scatter file and the
+  # across hosts is not cheap. AC6 only: the Alif boards' scatter files and the
   # FVP layer's semihosting exit are written for Arm Compiler 6.
   build-and-run:
-    name: Export, build for AppKit-E7 and SSE-300-U55, run on the FVP
+    name: Export, build for AppKit-E7, DevKit-E8 and SSE-300-U55, run on the FVP
     runs-on: ubuntu-latest
 
     steps:
@@ -74,8 +75,18 @@ jobs:
           .venv/bin/python create_ai_layer.py ${SOLUTION}.cbuild-mlops.yml
           git diff --stat -- ai_layer/
 
+      # The DevKit-E8's Ethos-U85 has its own, hand-written MLOps file; it
+      # uses the .cmsis/ensemble_vela.ini that cbuild setup copied.
+      - name: Create the AI layer for the Ethos-U85
+        run: |
+          .venv/bin/python create_ai_layer.py ai_layer_u85/${SOLUTION}.cbuild-mlops.yml
+          git diff --stat -- ai_layer_u85/
+
       - name: Build for the AppKit-E7
         run: cbuild ${SOLUTION}.csolution.yml --active AppKit-E7 --packs
+
+      - name: Build for the DevKit-E8
+        run: cbuild ${SOLUTION}.csolution.yml --active DevKit-E8 --packs
 
       - name: Build for the Corstone-300 FVP
         run: cbuild ${SOLUTION}.csolution.yml --active SSE-300-U55 --packs
@@ -105,6 +116,7 @@ jobs:
             out/**/*.axf
             out/**/*.hex
             ai_layer/
+            ai_layer_u85/
 
   # The export flow must work on all three host OSes -- that is the point of a
   # venv-based (rather than Docker-based) model build. No FVP and no Arm

@@ -1,4 +1,4 @@
-# Traffic counter with YOLO26n on the Ethos-U55 (AppKit-E7)
+# Traffic counter with YOLO26n on the Ethos-U55 (AppKit-E7) and the Ethos-U85 (DevKit-E8)
 
 The vehicles an Alif Ensemble E7 AppKit (AK-E7-AIML, Gen 2) sees through its
 camera are detected by Ultralytics YOLO26n on the Ethos-U55-256 next to the
@@ -7,8 +7,10 @@ counted, per class and direction, as they cross a line on the picture. The
 panel shows the picture, the tracks, the line and the tallies. The project is
 `traffic/traffic.cproject.yml`, target-type `AppKit-E7`; the same application
 and AI layer also run on the Corstone-300 FVP (target-type `SSE-300-U55`, see
-[On the FVP](#on-the-fvp)). It started as a fork of the YOLO26n cat detector
-for the Ensemble E8 in the Arm cmsis-executorch example.
+[On the FVP](#on-the-fvp)), and the same application on the Ensemble E8
+DevKit with the model on its Ethos-U85-256 (target-type `DevKit-E8`, see
+[On the DevKit-E8](#on-the-devkit-e8)). It started as a fork of the YOLO26n
+cat detector for the Ensemble E8 in the Arm cmsis-executorch example.
 
 ## The model
 
@@ -105,7 +107,9 @@ than the attention blocks were.
 .venv/bin/python traffic/make_test_image.py      # the test image, traffic/test_image.c (not committed)
 cbuild setup cmsis-executorch.csolution.yml --active AppKit-E7 --packs   # writes cmsis-executorch.cbuild-mlops.yml
 .venv/bin/python create_ai_layer.py cmsis-executorch.cbuild-mlops.yml   # only after changing model/traffic.py
+.venv/bin/python create_ai_layer.py ai_layer_u85/cmsis-executorch.cbuild-mlops.yml   # the same for the DevKit-E8's Ethos-U85
 cbuild cmsis-executorch.csolution.yml --active AppKit-E7 --packs
+cbuild cmsis-executorch.csolution.yml --active DevKit-E8 --packs
 ```
 
 The AI layer `ai_layer/` is committed, so the export is only needed after a
@@ -167,6 +171,76 @@ In VS Code, **Run** and **Debug** in the CMSIS view do the same with
 `.vscode/fvp.sh` as the model, which on macOS runs the Linux FVP in Docker
 (the image is built on first use, `.vscode/fvp.Dockerfile`). The FVP needs an
 Arm user-based license (the Keil MDK Community license is enough).
+
+## On the DevKit-E8
+
+The target-type `DevKit-E8` is the Alif Ensemble E8 DevKit (DK-E8,
+`AE822FA0E5597LS0`) with the kit's MT9M114 camera module and the 480x800
+ILI9806E panel: the same application on the M55 HP core, with the model on
+the E8's Ethos-U85-256 (`NPU_HG` at 0x49042000, IRQ 366, `ethos_setup.c`).
+Its board layer, [`board/DevKit-E8/`](../board/DevKit-E8/), is the AppKit-E7
+layer on the configuration of the Ensemble pack's DevKit-e8 M55_HP layer,
+whose camera settings (MT9M114 over MIPI CSI-2 into the CPI, CPI streaming
+off, the clock pin on `CAM_XVCLK_A`) already match the AppKit-E7's fixes
+below; the one change in its `RTE_Device.h` is
+`RTE_MT9M114_CAMERA_SENSOR_MIPI_IMAGE_CONFIG 3` (640x480 RGB565, the pack's
+1 is 1280x720 RAW8).
+
+| | AppKit-E7 | DevKit-E8 |
+|---|---|---|
+| NPU and AI layer | Ethos-U55-256, `ai_layer/` | Ethos-U85-256, `ai_layer_u85/` (`ETHOSU85`, `Ethos-U Driver&Generic U85`) |
+| Vela system configuration | `RTSS_HP_SRAM_MRAM`, `Shared_Sram` | `Ethos_U85_SRAM_MRAM`, `Shared_Sram` |
+| NPU memory routing | `NPU_QCONFIG`, `NPU_REGIONCFG_*`, `AXI_LIMIT*_MEM_TYPE` in the layer | the driver's defaults: the command stream and the weights from the MRAM through the EXT port, the scratch in the SRAM |
+| SRAM1 | 2.5 MB at 0x08000000 | 4 MB at 0x02400000, right after SRAM0 |
+| Panel | hangs upside down, `IMAGE_PANEL_TURN_180` | upright as drawn |
+| USB PHY for SDS | the Secure Enclave's run profile (`phy_pwr_gating`) | the 20 MHz clock through the Secure Enclave, then VBAT `PWR_CTRL` bits 16 and 17 (`usb_power_init` in `main.c`) |
+| SDS connector | User USB (J1) | SoC USB (J2) |
+| Boot table | `.alif/M55_HP_mram_cfg_e7.json`, the E7's device configuration, revision B4 | `.alif/M55_HP_mram_cfg_e8.json`, the SETOOLS default device configuration |
+
+The csolution's `mlops:` node describes one NPU, the AppKit-E7's
+Ethos-U55. The export for the Ethos-U85 reads
+`ai_layer_u85/cmsis-executorch.cbuild-mlops.yml` instead, written by hand in
+the format `cbuild setup` emits (NPU `Ethos-U85`, 256 MACs, Vela options
+`--accelerator-config ethos-u85-256 --system-config Ethos_U85_SRAM_MRAM
+--memory-mode Shared_Sram`), and writes the AI layer next to it:
+
+```bash
+.venv/bin/python create_ai_layer.py ai_layer_u85/cmsis-executorch.cbuild-mlops.yml
+```
+
+Vela compiles the same int8 model for the Ethos-U85 into a 2.44 MB program
+(2.28 MB for the Ethos-U55). The memory map of the E8 build (2026-10-13):
+
+| Memory | Holds |
+|--------|-------|
+| MRAM, from 0x80200000 | code and the test image (727 kB), then the program (`ER_MODEL` at 0x802b2130, running on into the MRAM user region at 0x80400000) up to 0x80505830; 3.18 of the 3.6 MB below the Secure Enclave's package (0x80570000) are used (`board/DevKit-E8/linker_ac6_traffic.sct.src`) |
+| SRAM0, 4 MB | as on the AppKit-E7: the method pool, the two camera frames, the two panel buffers, the thread stacks; 92 % used |
+| SRAM1, 4 MB | the `Panel` stream buffer (230 kB), the two model input slots (1.04 MB) and Vela's scratch (1.31 MB); 2.58 MB used. `UNINIT`, powered through the Secure Enclave by the application, as on the AppKit-E7 |
+| DTCM | the console log, the SDS input buffer, the C library, the tracker; 633 of 901 kB used |
+
+**Load** and **Debug** in the CMSIS view use the J-Link device
+`AE822FA0E5597LS0_M55_HP` (J-Link V9.74 knows it), and
+`tools/console_log.py out/traffic/DevKit-E8/Release/traffic.axf.map` reads
+the console of the DevKit-E8. The CMSIS Debugger's pyOCD also programs the
+image through the on-board J-Link with the pack's `Ensemble.FLM`.
+
+On the board (2026-10-13, the fine-tuned model without attention, core and
+NPU at 400 MHz), next to the AppKit-E7's numbers from "Performance on the
+board":
+
+| Board | NPU | Detect | Frame on the test image | Camera loop | Test image (host float) |
+|-------|-----|--------|-------------------------|-------------|-------------------------|
+| AppKit-E7, Ethos-U55-256 | 31.0 ms | 32.7 ms | 36.0 ms, 27.6 fps | 25.0 fps | truck 0.65, truck 0.50 |
+| DevKit-E8, Ethos-U85-256 | 15.3 ms | 16.6 ms | 20.2 ms, 46 fps | 25.0 fps | truck 0.65, bus 0.35, truck 0.35 (truck 0.64, truck 0.35, truck 0.35, truck 0.25) |
+
+The Ethos-U85 halves the NPU time. With the camera the loop stays at 25 fps:
+the vision thread now waits 19.7 ms of each 39.9 ms frame for the next
+snapshot, so the camera, not the NPU, sets the rate. On the test image the
+Ethos-U85 finds the three boxes the float model scores above the detector's
+0.30 threshold, at the same places (the fourth, a truck at 0.25, is below
+it); the left one is a bus at 0.35 where the float model has a truck at
+0.35. Vela's command stream for the Ethos-U85 is a different compilation of
+the same int8 model, and its scores differ from the Ethos-U55's.
 
 ## The pipeline
 
@@ -464,3 +538,10 @@ COCO-pretrained YOLO26n whole on the NPU, 18.7 fps with its attention on the
 CPU), the NPU at 31 ms per 416x416 frame, the joystick line, and SDS
 recording and playback over the User USB. The tracker's counting is checked
 on the host against the float model (`traffic/count_playback.py`).
+
+Runs on the DevKit-E8 (DK-E8, MT9M114 module; 2026-10-13, AC6,
+`out/traffic/DevKit-E8/Release/traffic.axf`): the fine-tuned YOLO26n
+without attention on the Ethos-U85-256, the camera picture on the panel
+upright, with the detections, the NPU at 15.3 ms per 416x416 frame, the
+camera loop at 25 fps (see On the DevKit-E8). Not yet tried there: the
+joystick, and SDS over the SoC USB.
