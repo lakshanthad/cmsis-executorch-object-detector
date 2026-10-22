@@ -19,6 +19,11 @@
 # `python create_ai_layer.py ai_layer_u85/cmsis-executorch.cbuild-mlops.yml`
 # and the third builds with --active DevKit-E8.
 #
+# The DevKit-E8 also runs an object detection demo (detect/detect.cproject.yml,
+# target set DevKit-E8@detect): YOLO26n with all 80 COCO classes from the
+# camera to the panel, AI layer ai_layer_detect/: the program of
+# `yolo export format=ethos`, imported by `python detect/make_ai_layer.py`.
+#
 # The `mlops:` node below makes `cbuild setup` emit the *.cbuild-mlops.yml;
 # create_ai_layer.py reads the NPU and Vela settings from it, exports the model
 # from PyTorch in the project's venv and writes the AI layer.
@@ -88,6 +93,17 @@ solution:
             protocol: swd
             clock: 4000000
             start-pname: M55_HP
+        # The object detection demo (detect/detect.cproject.yml): YOLO26n with
+        # the 80 COCO classes, camera to panel. Same MRAM region, so the same
+        # debug stubs boot it: build and load DevKit-E8@detect.
+        - set: detect
+          images:
+            - project-context: detect.Release
+          debugger:
+            name: J-Link Server
+            protocol: swd
+            clock: 4000000
+            start-pname: M55_HP
 
     # Corstone-300 (SSE-300) with a Cortex-M55 and an Ethos-U55-256, the NPU
     # configuration of the E7's HP core, simulated on the Arm FVP. No camera,
@@ -140,6 +156,10 @@ solution:
 
   projects:
     - project: ./traffic/traffic.cproject.yml
+    # The object detection demo, on the DevKit-E8 only (its AI layer is for
+    # the E8's Ethos-U85): target set DevKit-E8@detect.
+    - project: ./detect/detect.cproject.yml
+      for-context: +DevKit-E8
 
   # MLOps information: exported to cmsis-executorch.cbuild-mlops.yml by
   # `cbuild setup ... --active AppKit-E7`. Retarget the NPU here and

@@ -110,6 +110,8 @@ recordings/traffic/*/
 # YOLO26n weights and the COCO128 calibration images next to itself.
 traffic/test_image.c
 traffic/test_image.h
+detect/test_image.c
+detect/test_image.h
 model/.cache
 # Frames ffmpeg extracts for the "SDS: video to CameraIn stream" task.
 .sds_frames/

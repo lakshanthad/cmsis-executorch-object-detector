@@ -10,7 +10,10 @@ picture, the boxes, the line and the tallies, and the joystick moves the line.
 Over the board's User USB, SDS records the model inputs and detections, or
 plays a recorded clip back into the detector instead of the camera. The same
 application runs on the Alif Ensemble E8 DevKit (DK-E8), with the model
-compiled for the E8's Ethos-U85-256.
+compiled for the E8's Ethos-U85-256. The DevKit-E8 also runs a simple object
+detection demo: the COCO-pretrained YOLO26n with all 80 classes, exported
+with `yolo export format=ethos`, from the camera to the panel
+([section 8](#8-object-detection-demo-on-the-devkit-e8)).
 
 On the AppKit-E7:
 
@@ -41,6 +44,9 @@ Cortex-M55 with an Ethos-U NPU:
 
 The AppKit-E7 and the FVP use the same AI layer, `ai_layer/`. The DevKit-E8
 uses `ai_layer_u85/`, the same model compiled by Vela for the Ethos-U85-256.
+The DevKit-E8 has a second target set, `detect`: the object detection demo,
+`detect/detect.cproject.yml`, with its own AI layer, `ai_layer_detect/`, the
+program of `yolo export format=ethos`.
 The full technical description of the traffic counter is
 [documentation/traffic-counter.md](documentation/traffic-counter.md).
 
@@ -227,7 +233,80 @@ and shows which line positions the traffic actually crosses. One SDSIO server
 owns the USB device at a time: let a run finish or stop it with Ctrl+C
 before starting the next.
 
-## 8. If something does not work
+## 8. Object detection demo on the DevKit-E8
+
+The target set **DevKit-E8@detect** builds `detect/detect.cproject.yml`: the
+COCO-pretrained YOLO26n with all 80 classes, exported for the Ethos-U85 by
+Ultralytics (`yolo export format=ethos`) with the whole network on the NPU
+(its two attention blocks included), from the camera to the panel. Each
+object gets a box with its class and score in the Ultralytics colours; above
+the picture are the frame rate and the NPU, detector and frame times, below
+it how many of each class are in view. There is no tracker, counting line,
+joystick or SDS; the board layer and the camera driver are the traffic
+counter's.
+
+| | |
+|---|---|
+| NPU | 17.0 ms per 416x416 frame (2.40 MB program in MRAM) |
+| Decode on the CPU | 3.8 ms: the best of the 80 class scores of each of 3549 anchors |
+| Loop with the camera | 25 fps, the camera's rate; 38.3 fps on the test image |
+
+```bash
+.venv/bin/python detect/make_test_image.py
+cbuild cmsis-executorch.csolution.yml --active DevKit-E8@detect --packs
+```
+
+`make_test_image.py` letterboxes the `bus.jpg` that comes with the
+`ultralytics` package into `detect/test_image.c` (not committed), at the
+program's input size, and prints what Ultralytics `predict` finds in it with
+the one-to-one head the program runs (`nms=False`). In VS Code choose the
+target-type **DevKit-E8** and the target set **detect** in **Manage
+Solution**, then **Build** and **Run** or **Debug**. The image is
+`out/detect/DevKit-E8/Release/detect.axf`; it boots from the same MRAM
+region as the traffic counter, so step 4 needs no repeat.
+
+- **Console:** `.venv/bin/python tools/console_log.py out/detect/DevKit-E8/Release/detect.axf.map`
+  prints the timing and the detections every 100 frames.
+- **Status:** the global `detect_status` holds the frame counters, the time
+  of each step in microseconds, the camera state and the latest detections.
+- **Test image:** with the debugger stopped at `main`, set
+  `detect_camera_enable` to 0 and continue: the demo runs on the test image.
+  The board finds the bus and the four people that `predict` finds on the
+  host (scores side by side in
+  [documentation/object-detection.md](documentation/object-detection.md#on-the-board)).
+
+The AI layer `ai_layer_detect/` is committed: the program that
+
+```bash
+yolo export model=yolo26n.pt format=ethos name=ethos-u85-256 imgsz=416 data=coco128.yaml
+```
+
+writes to `yolo26n_ethos_model/`, imported by `detect/make_ai_layer.py`. To
+run another YOLO26 detection model or input size, export it the same way and
+import it:
+
+```bash
+.venv/bin/python detect/make_ai_layer.py yolo26n_ethos_model
+.venv/bin/python detect/make_test_image.py
+```
+
+`format=ethos` is not in an Ultralytics release yet (ultralytics PR 24171);
+until it is, install the pull request's branch into the venv:
+
+```bash
+.venv/bin/python -m pip install "ultralytics @ git+https://github.com/ultralytics/ultralytics@ethos-export"
+```
+
+The program has to come from the ExecuTorch release of the
+`PyTorch::ExecuTorch` pack, 1.5.1, which the venv has; `name=ethos-u85-256`
+is the E8's NPU, and `make_ai_layer.py` refuses a program for another. The
+export calibrates on the images in a random order, so a new export is
+equivalent to the committed program, not identical to it.
+[documentation/object-detection.md](documentation/object-detection.md)
+describes the demo in detail, including why the class scores need fixed
+quantization ranges.
+
+## 9. If something does not work
 
 - **The application never gets past the Secure Enclave handshake** (the log
   shows no frames, `SRAM1: power request failed`): the Secure Enclave has
@@ -261,8 +340,8 @@ before starting the next.
 The code is under the Apache License 2.0 ([LICENSE](LICENSE)). The YOLO26n
 weights come from Ultralytics and are under the AGPL-3.0: the fine-tuned
 checkpoint `model/yolo26n-noattn-vehicles.pt`, its architecture
-`model/yolo26n-noattn.yaml`, and the programs compiled into `ai_layer/`
-and `ai_layer_u85/`; `model/` fetches the COCO-pretrained
+`model/yolo26n-noattn.yaml`, and the programs compiled into `ai_layer/`,
+`ai_layer_u85/` and `ai_layer_detect/`; `model/` fetches the COCO-pretrained
 `yolo26n.pt` with the `ultralytics` package. `src/LICENSE-ExecuTorch` covers
 the ExecuTorch sources (BSD-3-Clause).
 
@@ -272,6 +351,9 @@ the ExecuTorch sources (BSD-3-Clause).
   traffic counter in detail (model, training, pipeline, the FVP, memory map,
   camera bring-up on the E7, SDS over USB, NPU performance and its PMU
   counters).
+- [documentation/object-detection.md](documentation/object-detection.md):
+  the object detection demo on the DevKit-E8 (model, quantization of the
+  class scores, memory, performance).
 - [documentation/mlops-flow.md](documentation/mlops-flow.md): the `mlops:`
   node, `*.cbuild-mlops.yml` and how the AI layer is made.
 - [documentation/pack-provenance.md](documentation/pack-provenance.md): where

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
-"""Print the console of the traffic counter on the AppKit-E7 or the DevKit-E8 while it runs.
+"""Print the console of the traffic counter on the AppKit-E7 or the DevKit-E8 while it runs (or of the object detection demo).
 
     python tools/console_log.py out/traffic/AppKit-E7/Release/traffic.axf.map [--follow SECONDS]
     python tools/console_log.py out/traffic/DevKit-E8/Release/traffic.axf.map [--follow SECONDS]
+    python tools/console_log.py out/detect/DevKit-E8/Release/detect.axf.map [--follow SECONDS]
 
 The board layers retarget stdio to board/<board>/retarget_stdio_log.c: the
 `console_log` ring buffer in the DTCM, because SW4 stays on SEUART for the

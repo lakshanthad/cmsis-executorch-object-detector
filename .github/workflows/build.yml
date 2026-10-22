@@ -4,7 +4,8 @@
 # CI for the three-step flow (cbuild setup, create_ai_layer.py, cbuild): the
 # AI layers exported from a fresh clone (Ethos-U55 and Ethos-U85), the traffic
 # counter built for the AppKit-E7, the DevKit-E8 and the Corstone-300 FVP, and
-# run on the FVP.
+# run on the FVP; the DevKit-E8's object detection demo built with its
+# committed AI layer, the program of `yolo export format=ethos`.
 name: Build and Run
 
 on:
@@ -67,6 +68,10 @@ jobs:
       - name: Make the test image
         run: .venv/bin/python traffic/make_test_image.py
 
+      # The demo's: the bus.jpg of the ultralytics package, not committed either.
+      - name: Make the test image of the object detection demo
+        run: .venv/bin/python detect/make_test_image.py
+
       - name: Generate the MLOps information
         run: cbuild setup ${SOLUTION}.csolution.yml --active AppKit-E7 --packs
 
@@ -87,6 +92,9 @@ jobs:
 
       - name: Build for the DevKit-E8
         run: cbuild ${SOLUTION}.csolution.yml --active DevKit-E8 --packs
+
+      - name: Build the object detection demo for the DevKit-E8
+        run: cbuild ${SOLUTION}.csolution.yml --active DevKit-E8@detect --packs
 
       - name: Build for the Corstone-300 FVP
         run: cbuild ${SOLUTION}.csolution.yml --active SSE-300-U55 --packs

@@ -1,0 +1,67 @@
+# Copyright 2026 Arm Limited and/or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Object detection demo with Ultralytics YOLO26n on the Ethos-U85 of the
+# Alif Ensemble E8 (Cortex-M55 HP core, DevKit-E8): the COCO-pretrained model
+# with all 80 classes, exported by `yolo export format=ethos` with the whole
+# network on the NPU, the camera picture on the panel with a box, the class
+# and the score for each object, and the frame rate. No tracker, counting
+# line, joystick or SDS: the traffic counter (traffic/) has those. The
+# DevKit-E8 board layer and the camera driver are the traffic counter's.
+#
+# Before the first build:
+#   python detect/make_test_image.py
+# The AI layer ai_layer_detect/ is committed. For another model or input size:
+#   yolo export model=yolo26n.pt format=ethos name=ethos-u85-256 imgsz=416 data=coco128.yaml
+#   python detect/make_ai_layer.py yolo26n_ethos_model
+#   python detect/make_test_image.py
+# Build and load: target set DevKit-E8@detect.
+project:
+  packs:
+    - pack: PyTorch::ExecuTorch@1.5.1
+    - pack: ARM::CMSIS
+
+  misc:
+    - CPP:
+        - -std=gnu++17
+        - -Wno-deprecated-declarations
+
+  groups:
+    - group: App
+      optimize: speed
+      add-path:
+        - ../src
+        - ../traffic
+      files:
+        - file: ./app_detect.cpp
+        # YOLO26n on the NPU and the rest of its head on the CPU.
+        - file: ./detector.cpp
+        - file: ./detector.h
+        - file: ./class_names.c
+        # The camera to the model input, the picture, boxes and text on the panel.
+        - file: ./image.c
+        - file: ./image.h
+        - file: ./test_image.c
+        - file: ./test_image.h
+        # From the traffic counter: the MT9M114 through the CPI, and the
+        # Ethos-U driver waiting on RTX semaphores instead of a __WFE loop.
+        - file: ../traffic/camera.c
+        - file: ../traffic/camera.h
+        - file: ../traffic/ethosu_rtos.c
+        # EmbeddedModule: ExecuTorch's Module class without the POSIX file
+        # loading (BSD-3-Clause, see src/LICENSE-ExecuTorch).
+        - file: ../src/arm_embedded_module.cpp
+        - file: ../src/arm_embedded_module.hpp
+
+  layers:
+    - layer: $Board-Layer$
+      type: Board
+    # Not $AI-Layer$: that is the traffic counter's model for the target-type.
+    - layer: ../ai_layer_detect/ai_layer.clayer.yml
+      type: AI
+
+  output:
+    type:
+      - elf
+      - hex
+      - map
