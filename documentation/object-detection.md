@@ -149,8 +149,7 @@ prints:
 The boxes of the board and the host int8 model agree within 2 pixels. The
 float model also gives the right-hand person a second box (0.58) that
 `predict` keeps and the board's duplicate check drops; the host int8 model
-has the same duplicate at 0.38. The detector's threshold was 0.30 when these
-scores were taken.
+has the same duplicate at 0.38.
 
 ## Status
 
