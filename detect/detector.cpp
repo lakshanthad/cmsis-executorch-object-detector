@@ -6,7 +6,7 @@
  * Ethos-U85-256, imported by detect/make_ai_layer.py into ai_layer_detect/,
  * the single method `forward` with the whole graph on the Ethos-U85 (its two
  * attention blocks included). It returns, per anchor, the box distances and
- * one score per COCO class (int8). The CPU does what is left of the YOLO26
+ * one score per class (int8). The CPU does what is left of the YOLO26
  * head: the best class of each anchor, the threshold, the distances of the
  * survivors turned into boxes. The one-to-one head of YOLO26 is NMS-free; an
  * IoU check still drops the rare duplicate.
@@ -71,12 +71,15 @@ static_assert(kAnchors == (kSize / 8) * (kSize / 8) + (kSize / 16) * (kSize / 16
 static_assert(kClasses == DETECTOR_CLASSES, "class count of the program");
 
 // Method pool: the runtime's structures and the method's planned buffer, the
-// two outputs (box 14 kB, the 80 class scores per anchor 284 kB at 416 x 416);
-// 298,460 bytes used at 416 x 416 (detector_method_pool_used). Temp pool:
-// Vela's scratch for the whole graph, 1223.7 KiB at 416 x 416.
+// two outputs (box 14 kB, the class scores 284 kB for 80 classes at 416 x 416);
+// 298,460 bytes used at 416 x 416 (detector_method_pool_used), 332 of them the
+// runtime's structures. Temp pool: Vela's scratch for the whole graph,
+// 1223.7 KiB at 416 x 416.
 constexpr size_t kMethodPoolSize = 0x50000;
+constexpr size_t kMethodRuntimeBytes = 1024;  // the runtime's structures, with room to spare
 constexpr size_t kTempPoolSize = 0x140000;
-static_assert(MODEL_DETECT_PLANNED_BYTES < kMethodPoolSize, "the program's planned buffer does not fit the method pool");
+static_assert(MODEL_DETECT_PLANNED_BYTES + kMethodRuntimeBytes <= kMethodPoolSize,
+              "the program's planned buffer does not fit the method pool");
 static_assert(MODEL_DETECT_SCRATCH_BYTES <= kTempPoolSize, "Vela's scratch does not fit the temp pool");
 alignas(16) uint8_t g_method_pool[kMethodPoolSize] __attribute__((section(APP_POOL_SECTION)));
 #ifndef APP_TEMP_POOL_SECTION

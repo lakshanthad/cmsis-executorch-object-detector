@@ -13,9 +13,10 @@ for the DevKit-E8's NPU, for example:
 A YOLO26 detection export runs whole on the NPU: the one-to-one head cut
 before its top-k, fixed logit and score ranges, an INT8 NHWC input
 (1, S, S, 3) that the runtime does not plan, INT8 box (1, N, 4) and scores
-(1, N, 80). detect/detector.cpp runs it and decodes the two outputs with the
+(1, N, C). detect/detector.cpp runs it and decodes the two outputs with the
 scales of the export's metadata.yaml, which this script writes into
-model_io.h.
+model_io.h together with the model name and the names of its C classes, so a
+model trained on other classes needs no change to the application.
 
 Run it in the solution's .venv (it reads the program with ExecuTorch). The
 program has to come from the ExecuTorch release of the csolution's
@@ -25,7 +26,7 @@ test image at the program's input size.
 Writes:
     ai_layer_detect/ai_layer.clayer.yml   runtime, Ethos-U backend and the CPU operators the program uses
     ai_layer_detect/model_pte.c / .h      the program as a C array
-    ai_layer_detect/model_io.h            its shapes, IO quantization, planned memory and NPU scratch
+    ai_layer_detect/model_io.h            its shapes, IO quantization, planned memory, NPU scratch and class names
     ai_layer_detect/model.pte             the program itself
 """
 
@@ -76,9 +77,8 @@ def executorch_pack(version: str) -> Path:
 def components(pte: bytes, pack: Path) -> tuple[list[str], list[str]]:
     """Runtime, kernel utils and registration, backend, plus one operator component per operator the .pte uses.
 
-    The pack's "Extension Tensor" is not selected: its tensor_ptr_maker.cpp
-    needs std::random_device, which the LLVM embedded toolchain lacks; the
-    runner wraps its input in a TensorImpl instead.
+    The pack's "Extension Tensor" is not selected: its tensor_ptr_maker.cpp needs std::random_device, which the LLVM
+    embedded toolchain lacks; the runner wraps its input in a TensorImpl instead.
     """
     pdsc = next(pack.glob("*.pdsc"))
     available = set(re.findall(r'Csub="([^"]+)"', pdsc.read_text()))
@@ -160,14 +160,22 @@ def program_io(pte: bytes) -> dict:
     }
 
 
-def quantization(io: dict, export_dir: Path) -> dict:
-    """The IO scales from the export's metadata.yaml, checked against what detect/detector.cpp expects."""
+def export_metadata(io: dict, export_dir: Path) -> tuple[dict, list[str], str]:
+    """The IO scales, class names and model name of the export's metadata.yaml, checked against the program."""
     import yaml
 
     metadata = yaml.safe_load((export_dir / "metadata.yaml").read_text())
     target = metadata.get("args", {}).get("name")
     if target != TARGET:
         sys.exit(f"the program is for {target}, the DevKit-E8 needs name={TARGET}")
+    if metadata.get("task") != "detect":
+        sys.exit(f"the program is a {metadata.get('task')} model; the demo runs YOLO26 detection models")
+    names = metadata.get("names") or {}
+    if not names:
+        sys.exit("metadata.yaml has no class names")
+    if sorted(names) != list(range(len(names))):
+        sys.exit(f"metadata.yaml: the class indices are not 0 to {len(names) - 1}: {sorted(names)}")
+    names = [str(names[i]) for i in range(len(names))]
     q = metadata.get("quantization")
     size = io["input"][1]
     anchors = sum((size // s) ** 2 for s in (8, 16, 32))
@@ -176,21 +184,49 @@ def quantization(io: dict, export_dir: Path) -> dict:
         or io["input_dtype"] != "int8"
         or io["output_dtypes"] != ["int8", "int8"]
         or io["input"] != [1, size, size, 3]
-        or io["outputs"] != [[1, anchors, 4], [1, anchors, 80]]
+        or io["outputs"] != [[1, anchors, 4], [1, anchors, len(names)]]
         or q["inputs"][0]["zero_point"] != -128
         or abs(q["inputs"][0]["scale"] * 255 - 1) > 0.01
         or len(io["planned"]) != 1
     ):
         sys.exit(
             "expected a YOLO26 detection export with INT8 IO: an NHWC input (1, S, S, 3) with scale ~1/255 and zero "
-            "point -128 (detect/detector.cpp converts RGB888 with x ^ 0x80), box (1, N, 4) and scores (1, N, 80), one "
-            f"planned buffer; found {io}, {q}"
+            "point -128 (detect/detector.cpp converts RGB888 with x ^ 0x80), box (1, N, 4) and scores (1, N, C) for "
+            f"the C = {len(names)} classes of metadata.yaml, one planned buffer; found {io}, {q}"
         )
-    return q
+    model = re.search(r"YOLO\w*", metadata.get("description", ""))
+    return q, names, model.group(0) if model else "YOLO26"
 
 
-def io_header(io: dict, q: dict, scratch: int) -> str:
-    """model_io.h: shapes, C types and INT8 quantization of the IO, under the names detect/detector.cpp uses."""
+def panel_label(name: str) -> str:
+    """A class name as the panel's 5x7 font writes it: upper case, ASCII 0x20 to 0x5A, an underscore as a space."""
+    text = name.upper().replace("_", " ")
+    label = "".join(c if " " <= c <= "Z" else "?" for c in text)
+    if label != text:
+        print(f"[detect] warning: the panel's font has no glyph for some of {name!r}; it shows {label!r}", file=sys.stderr)
+    return label
+
+
+def class_names(names: list[str]) -> list[str]:
+    """MODEL_DETECT_CLASS_NAMES: the panel labels as a C initializer, continued over lines of up to 100 columns."""
+    strings = ['"' + panel_label(n).replace('"', '\\"').replace("?", "\\?") + '"' for n in names]
+    rows, row = [], []
+    for item in strings:
+        if row and len("    " + ", ".join([*row, item]) + ", \\") > 100:
+            rows.append(row)
+            row = []
+        row.append(item)
+    rows.append(row)
+    lines = ["#define MODEL_DETECT_CLASS_NAMES { \\"]
+    lines += ["    " + ", ".join(r) + ", \\" for r in rows]
+    lines.append("}")
+    return lines
+
+
+def io_header(io: dict, q: dict, scratch: int, names: list[str], model: str) -> str:
+    """model_io.h: shapes, C types and INT8 quantization of the IO, and the classes, under the names detect/detector.cpp
+    uses.
+    """
     lines = [
         "// Generated by detect/make_ai_layer.py -- do not edit.",
         "// Quantized IO of every method in model_pte: shapes, C types and the",
@@ -218,18 +254,22 @@ def io_header(io: dict, q: dict, scratch: int) -> str:
         ]
     lines.append(f"#define MODEL_DETECT_PLANNED_BYTES {io['planned'][0]}  // the planned buffer: the two outputs")
     lines.append(f"#define MODEL_DETECT_SCRATCH_BYTES {scratch}  // Vela's scratch for the delegate")
+    lines.append(f'#define MODEL_DETECT_NAME "{model}"  // the model, from the description in metadata.yaml')
+    lines.append(f"#define MODEL_DETECT_CLASSES {len(names)}  // the class channels of OUTPUT1, named in metadata.yaml")
+    lines.append("// The class names, upper case for the panel's font (detect/class_names.c).")
+    lines += class_names(names)
     lines.append("")
     return "\n".join(lines)
 
 
-def clayer(runtime: list[str], operators: list[str], version: str, source: str) -> str:
+def clayer(runtime: list[str], operators: list[str], version: str, source: str, model: str, classes: int) -> str:
     return "\n".join(
         [
             "# Generated by detect/make_ai_layer.py -- do not edit.",
             f"# From {source}, a program of `yolo export format=ethos`.",
             "layer:",
             "  type: AI",
-            "  description: YOLO26n object detector (80 COCO classes) from `yolo export format=ethos` for the Ethos-U85 of the Ensemble E8",
+            f"  description: {model} object detector ({classes} classes) from `yolo export format=ethos` for the Ethos-U85 of the Ensemble E8",
             "",
             "  packs:",
             f"    - pack: {PACK}@{version}",
@@ -262,7 +302,7 @@ def main() -> None:
     pte_file = source if source.suffix == ".pte" else next(source.glob("*.pte"))
     pte = pte_file.read_bytes()
     io = program_io(pte)
-    q = quantization(io, pte_file.parent)
+    q, names, model = export_metadata(io, pte_file.parent)
     scratch = scratch_size(pte)
 
     version = executorch_version()
@@ -272,10 +312,12 @@ def main() -> None:
     (LAYER / "model.pte").write_bytes(pte)
     (LAYER / f"{SYMBOL}.c").write_text(c_array(pte), newline="\n")
     (LAYER / f"{SYMBOL}.h").write_text(HEADER, newline="\n")
-    (LAYER / "model_io.h").write_text(io_header(io, q, scratch), newline="\n")
-    (LAYER / "ai_layer.clayer.yml").write_text(clayer(runtime, operators, version, pte_file.name), newline="\n")
+    (LAYER / "model_io.h").write_text(io_header(io, q, scratch, names, model), newline="\n")
+    (LAYER / "ai_layer.clayer.yml").write_text(
+        clayer(runtime, operators, version, pte_file.name, model, len(names)), newline="\n"
+    )
 
-    print(f"[detect] {io['method']}: input {io['input']} outputs {io['outputs']}, INT8")
+    print(f"[detect] {model} {io['method']}: input {io['input']} outputs {io['outputs']}, INT8, {len(names)} classes")
     print(f"[detect] planned {io['planned'][0]} bytes, NPU scratch {scratch} bytes")
     print(f"[detect] {len(pte)} byte program, CPU operators: {operators or 'none'}")
     print(f"[detect] wrote {LAYER}; now run detect/make_test_image.py")

@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Object detection demo with Ultralytics YOLO26n on the Ethos-U85 of the
-# Alif Ensemble E8 (Cortex-M55 HP core, DevKit-E8): the COCO-pretrained model
-# with all 80 classes, exported by `yolo export format=ethos` with the whole
-# network on the NPU, the camera picture on the panel with a box, the class
-# and the score for each object, and the frame rate.
+# Alif Ensemble E8 (Cortex-M55 HP core, DevKit-E8): by default the
+# COCO-pretrained model with all 80 classes, exported by
+# `yolo export format=ethos` with the whole network on the NPU, the camera
+# picture on the panel with a box, the class and the score for each object,
+# and the frame rate. The class count and names come from the export.
 #
 # Before the first build:
 #   python detect/make_test_image.py
-# The AI layer ai_layer_detect/ is committed. For another model or input size:
-#   yolo export model=yolo26n.pt format=ethos name=ethos-u85-256 imgsz=416 data=coco128.yaml
-#   python detect/make_ai_layer.py yolo26n_ethos_model
-#   python detect/make_test_image.py
+# The AI layer ai_layer_detect/ is committed. For another model, classes or input size:
+#   yolo export model=best.pt format=ethos name=ethos-u85-256 imgsz=416 data=my_data.yaml
+#   python detect/make_ai_layer.py best_ethos_model
+#   python detect/make_test_image.py my_image.jpg --weights best.pt
 # Build and load: target-type DevKit-E8.
 project:
   packs:
@@ -31,7 +32,8 @@ project:
         - ../src
       files:
         - file: ./app_detect.cpp
-        # YOLO26n on the NPU and the rest of its head on the CPU.
+        # The model on the NPU and the rest of its head on the CPU; the class
+        # names of the export (ai_layer_detect/model_io.h).
         - file: ./detector.cpp
         - file: ./detector.h
         - file: ./class_names.c

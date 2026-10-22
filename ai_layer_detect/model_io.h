@@ -35,3 +35,18 @@
 #define MODEL_DETECT_OUTPUT1_QMAX 127
 #define MODEL_DETECT_PLANNED_BYTES 298128  // the planned buffer: the two outputs
 #define MODEL_DETECT_SCRATCH_BYTES 1253088  // Vela's scratch for the delegate
+#define MODEL_DETECT_NAME "YOLO26n"  // the model, from the description in metadata.yaml
+#define MODEL_DETECT_CLASSES 80  // the class channels of OUTPUT1, named in metadata.yaml
+// The class names, upper case for the panel's font (detect/class_names.c).
+#define MODEL_DETECT_CLASS_NAMES { \
+    "PERSON", "BICYCLE", "CAR", "MOTORCYCLE", "AIRPLANE", "BUS", "TRAIN", "TRUCK", "BOAT", \
+    "TRAFFIC LIGHT", "FIRE HYDRANT", "STOP SIGN", "PARKING METER", "BENCH", "BIRD", "CAT", "DOG", \
+    "HORSE", "SHEEP", "COW", "ELEPHANT", "BEAR", "ZEBRA", "GIRAFFE", "BACKPACK", "UMBRELLA", \
+    "HANDBAG", "TIE", "SUITCASE", "FRISBEE", "SKIS", "SNOWBOARD", "SPORTS BALL", "KITE", \
+    "BASEBALL BAT", "BASEBALL GLOVE", "SKATEBOARD", "SURFBOARD", "TENNIS RACKET", "BOTTLE", \
+    "WINE GLASS", "CUP", "FORK", "KNIFE", "SPOON", "BOWL", "BANANA", "APPLE", "SANDWICH", \
+    "ORANGE", "BROCCOLI", "CARROT", "HOT DOG", "PIZZA", "DONUT", "CAKE", "CHAIR", "COUCH", \
+    "POTTED PLANT", "BED", "DINING TABLE", "TOILET", "TV", "LAPTOP", "MOUSE", "REMOTE", \
+    "KEYBOARD", "CELL PHONE", "MICROWAVE", "OVEN", "TOASTER", "SINK", "REFRIGERATOR", "BOOK", \
+    "CLOCK", "VASE", "SCISSORS", "TEDDY BEAR", "HAIR DRIER", "TOOTHBRUSH", \
+}

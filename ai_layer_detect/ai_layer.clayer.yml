@@ -2,7 +2,7 @@
 # From yolo26n.pte, a program of `yolo export format=ethos`.
 layer:
   type: AI
-  description: YOLO26n object detector (80 COCO classes) from `yolo export format=ethos` for the Ethos-U85 of the Ensemble E8
+  description: YOLO26n object detector (80 classes) from `yolo export format=ethos` for the Ethos-U85 of the Ensemble E8
 
   packs:
     - pack: PyTorch::ExecuTorch@1.5.1

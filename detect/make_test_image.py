@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Write the test image of the detection demo as a C array: detect/test_image.c.
 
-    python detect/make_test_image.py [<image file or URL>]
+    python detect/make_test_image.py [<image file or URL>] [--weights <model.pt>]
 
 The image is letterboxed to the model input (the Ultralytics grey padding)
 and stored as interleaved RGB888, what the camera path hands over. The input
@@ -15,13 +15,17 @@ input size.
 
 It also prints what Ultralytics `predict` finds in the letterboxed image with
 the one-to-one head that the program runs (nms=False) and the board's score
-threshold: the float reference for the board. The COCO-pretrained
-yolo26n.pt is the one at the repository root, which Ultralytics downloads on
-the first run (and `yolo export model=yolo26n.pt` run there uses too).
+threshold: the float reference for the board. That reference is only right
+for the weights the program was exported from: --weights names them. The
+default is the COCO-pretrained yolo26n.pt at the repository root, which
+Ultralytics downloads on the first run (and `yolo export model=yolo26n.pt`
+run there uses too). For a model trained on other classes, pass an image of
+its own data.
 """
 
 from __future__ import annotations
 
+import argparse
 import re
 import ssl
 import sys
@@ -72,14 +76,26 @@ def main() -> None:
     from ultralytics import YOLO
     from ultralytics.utils import ASSETS
 
-    size = int(define(ROOT / "ai_layer_detect/model_io.h", r"MODEL_DETECT_INPUT0_SHAPE \{1, (\d+), \d+, 3\}"))
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("image", nargs="?", help="image file or URL (default: the bus.jpg of the ultralytics package)")
+    parser.add_argument("--weights", type=Path, default=WEIGHTS, help="the weights the program was exported from")
+    args = parser.parse_args()
+
+    model_io = ROOT / "ai_layer_detect/model_io.h"
+    size = int(define(model_io, r"MODEL_DETECT_INPUT0_SHAPE \{1, (\d+), \d+, 3\}"))
+    classes = int(define(model_io, r"MODEL_DETECT_CLASSES (\d+)"))
     threshold = float(define(HERE / "detector.h", r"DETECTOR_SCORE_THRESHOLD ([0-9.]+)f"))
-    source = sys.argv[1] if len(sys.argv) > 1 else str(ASSETS / "bus.jpg")
+    source = args.image or str(ASSETS / "bus.jpg")
     bgr = cv2.imdecode(np.frombuffer(fetch(source), np.uint8), cv2.IMREAD_COLOR)
     rgb = letterbox(bgr, size)
 
     # The square letterboxed image is already the input size, so predict adds no padding of its own.
-    model = YOLO(str(WEIGHTS))  # Ultralytics downloads the COCO-pretrained weights
+    model = YOLO(str(args.weights))  # Ultralytics downloads the COCO-pretrained yolo26n.pt
+    if len(model.names) != classes:
+        sys.exit(
+            f"{args.weights} has {len(model.names)} classes, the program in ai_layer_detect/ {classes}: "
+            "pass the weights it was exported from with --weights"
+        )
     result = model.predict(np.ascontiguousarray(rgb[..., ::-1]), imgsz=size, conf=threshold, nms=False, verbose=False)[0]
     reference = [
         f"{result.names[int(c)]} {s:.2f} x1 {x1:.0f} y1 {y1:.0f} x2 {x2:.0f} y2 {y2:.0f}"

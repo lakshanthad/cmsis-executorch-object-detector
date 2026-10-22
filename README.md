@@ -7,7 +7,9 @@ panel. The model is exported for the NPU by Ultralytics
 attention blocks included, and runs with ExecuTorch next to the Cortex-M55 HP
 core. Each object gets a box with its class and score in the Ultralytics
 colours; above the picture are the frame rate and the NPU, detector and frame
-times, below it how many of each class are in view.
+times, below it how many of each class are in view. A YOLO26 detection model
+trained on other classes runs the same way, with no change to the
+application ([section 6](#6-export-another-model)).
 
 |                      |                                                                 |
 | -------------------- | --------------------------------------------------------------- |
@@ -141,14 +143,36 @@ The committed AI layer is the program that
 yolo export model=yolo26n.pt format=ethos name=ethos-u85-256 imgsz=416 data=coco128.yaml
 ```
 
-writes to `yolo26n_ethos_model/`, imported by `detect/make_ai_layer.py`. To
-run another YOLO26 detection model or input size, export it the same way in
-the venv and import it:
+writes to `yolo26n_ethos_model/`, imported by `detect/make_ai_layer.py`. Any
+YOLO26 detection model runs the same way, including one trained on your own
+classes. Export it in the venv with your dataset's YAML as `data=` (the
+export calibrates on its images), import it, and make the test image from
+the same weights and an image of your data:
 
 ```bash
-.venv/bin/python detect/make_ai_layer.py yolo26n_ethos_model
-.venv/bin/python detect/make_test_image.py
+yolo export model=best.pt format=ethos name=ethos-u85-256 imgsz=416 data=my_data.yaml
+.venv/bin/python detect/make_ai_layer.py best_ethos_model
+.venv/bin/python detect/make_test_image.py my_image.jpg --weights best.pt
 ```
+
+`make_ai_layer.py` writes the class count and the class names of the
+export's `metadata.yaml` into `ai_layer_detect/model_io.h`, and the
+application labels the boxes with them. The panel's font has upper case
+letters, digits and common punctuation only, so the names are shown in upper
+case, an underscore as a space and any other character as `?`.
+`make_test_image.py` refuses weights with another class count than the
+program; without `--weights` it takes the COCO-pretrained `yolo26n.pt`.
+
+The build checks that the program fits the board:
+
+- **Classes:** up to 88 at `imgsz=416`. The two outputs, 3549 x (4 + classes)
+  bytes, go in the 320 kB method pool (`kMethodPoolSize` in
+  `detect/detector.cpp`, in SRAM0, which has about 280 kB to spare). A
+  smaller `imgsz` has fewer anchors and leaves room for more classes.
+- **Input size:** `imgsz` up to 416. Vela's scratch, 1223.7 KiB at 416, has
+  to fit the 1280 KiB temp pool in SRAM1.
+- **Model size:** about `yolo26n`. The program is in the MRAM, and the image
+  ends about 500 kB below the top of the region the scatter file allows.
 
 `format=ethos` is not in an Ultralytics release yet (ultralytics PR 24171);
 until it is, install the pull request's branch into the venv:

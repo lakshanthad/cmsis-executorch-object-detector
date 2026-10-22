@@ -2,15 +2,15 @@
  * Copyright 2026 Arm Limited and/or its affiliates.
  * SPDX-License-Identifier: Apache-2.0
  *
- * Object detection demo: YOLO26n with the 80 COCO classes on the Ethos-U85
- * of the Alif Ensemble E8 (M55-HP, DevKit-E8), live from the camera to the
- * panel.
+ * Object detection demo: a YOLO26 detection model, by default YOLO26n with
+ * the 80 COCO classes, on the Ethos-U85 of the Alif Ensemble E8 (M55-HP,
+ * DevKit-E8), live from the camera to the panel.
  *
  * Each frame:
  *   1. the input: the newest camera frame (the MT9M114's 640x480 RGB565),
  *      its centre square scaled to the 416x416 RGB888 model input by the
  *      camera thread; without a camera, the test image (detect/test_image.c)
- *   2. the detector: YOLO26n on the NPU, the head's decode on the CPU (detector.cpp)
+ *   2. the detector: the model on the NPU, the head's decode on the CPU (detector.cpp)
  *   3. the panel: the picture in a 480x480 view; the boxes with class and
  *      score, the frame rate and the timing around it in the display thread,
  *      while the NPU works on the next frame; double-buffered.
@@ -224,7 +224,7 @@ void draw_status(uint8_t* fb, const detections_t& det, Source source, float fps,
   image_fill(fb, 0, IMAGE_VIEW_TOP + IMAGE_VIEW, IMAGE_PANEL_W, IMAGE_PANEL_H, kBlack);
 
   char line[48];
-  image_text(fb, 12, 6, 2, "OBJECT DETECTION  YOLO26N  " DETECT_NPU_LABEL, kDim);
+  image_text(fb, 12, 6, 2, "OBJECT DETECTION  " MODEL_DETECT_NAME "  " DETECT_NPU_LABEL, kDim);
   snprintf(line, sizeof(line), "%.1f", static_cast<double>(fps));
   const int x = image_text(fb, 12, 40, 7, line, kWhite);
   image_text(fb, x + 4, 76, 2, "FPS", kGrey);
@@ -302,8 +302,8 @@ __NO_RETURN void display_thread(void*) {
 extern "C" int app_main(void) {
   setvbuf(stdout, nullptr, _IONBF, 0);
   memset(const_cast<DetectStatus*>(&detect_status), 0, sizeof(detect_status));
-  printf("Object detection: YOLO26n (80 COCO classes) on the " DETECT_NPU_NAME ", input %dx%d RGB888, core %lu MHz\n", kSize,
-         kSize, static_cast<unsigned long>(SystemCoreClock / 1000000U));
+  printf("Object detection: " MODEL_DETECT_NAME " (%d classes) on the " DETECT_NPU_NAME ", input %dx%d RGB888, core %lu MHz\n",
+         DETECTOR_CLASSES, kSize, kSize, static_cast<unsigned long>(SystemCoreClock / 1000000U));
 
   if (!sram1_power_on()) return 1;
   int32_t status = detector_init();

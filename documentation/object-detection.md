@@ -3,8 +3,10 @@
 The COCO-pretrained Ultralytics YOLO26n with all 80 classes runs on the
 Ethos-U85-256 of the Alif Ensemble E8 DevKit, and the panel shows the camera
 picture with a box, the class and the score for each object, and the frame
-rate. The project is `detect/detect.cproject.yml`, target-type `DevKit-E8`.
-Build and run are in the [README](../README.md).
+rate. A YOLO26 detection model trained on other classes runs the same way
+([Models trained on other classes](#models-trained-on-other-classes)). The
+project is `detect/detect.cproject.yml`, target-type `DevKit-E8`. Build and
+run are in the [README](../README.md).
 
 ## The model
 
@@ -44,10 +46,35 @@ into the AI layer `ai_layer_detect/`: the program as a C array, the
 ExecuTorch components it needs (the runtime and the Ethos-U backend, no CPU
 operators), and `model_io.h` with the shapes, the INT8 scales of
 `metadata.yaml`, the planned buffer and Vela's scratch, which
-`detect/detector.cpp` checks against its memory pools when it compiles. It
-refuses a program for another NPU than `ethos-u85-256` or with another
-interface. The program has to come from the ExecuTorch release of the
-`PyTorch::ExecuTorch` pack, 1.5.1.
+`detect/detector.cpp` checks against its memory pools when it compiles, and
+the model name and class names of `metadata.yaml`. It refuses a program for
+another NPU than `ethos-u85-256` or with another interface. The program has
+to come from the ExecuTorch release of the `PyTorch::ExecuTorch` pack, 1.5.1.
+
+## Models trained on other classes
+
+Nothing in the application is specific to COCO. `make_ai_layer.py` writes
+the class names of the export's `metadata.yaml` into `model_io.h` as
+`MODEL_DETECT_CLASSES` and `MODEL_DETECT_CLASS_NAMES`, in upper case with an
+underscore as a space: the panel's 5x7 font has no lower case, and it shows
+a character outside its range as `?` (the script warns about such a name).
+`detect/class_names.c` takes the names from there, the decode takes the
+class count from the program's output shape, and `detector.cpp` checks that
+the two agree when it compiles. `MODEL_DETECT_NAME`, the model from the
+description in `metadata.yaml`, goes into the title. The colours repeat the
+20 of the Ultralytics palette.
+
+The class count sets the size of the class scores, 3549 x C bytes at
+416 x 416, and the time of the decode, which reads every score: about
+0.05 ms per class. The two outputs fit the method pool up to 88 classes; the
+[README](../README.md#6-export-another-model) lists the limits.
+
+As a check, `yolo26n` cut down to its first six COCO classes, with class 5
+renamed `city_bus`, was exported, imported and run on the board with no
+change to the application. On the test image it finds the bus as
+`CITY BUS` (0.95) and the four people (0.91, 0.88, 0.87 and 0.29) with the
+boxes of the 80-class program within 2 pixels, at 46.2 fps, the decode down
+from 3.8 ms to 0.28 ms.
 
 ## Quantization of the class scores
 

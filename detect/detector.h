@@ -2,22 +2,24 @@
  * Copyright 2026 Arm Limited and/or its affiliates.
  * SPDX-License-Identifier: Apache-2.0
  *
- * The object detector of the detection demo: YOLO26n with the 80 COCO
- * classes on the Ethos-U85 (the program of `yolo export format=ethos` in
- * ai_layer_detect/) and the rest of its head on the CPU: the best class of
- * each anchor, the threshold, the boxes.
+ * The object detector of the detection demo: a YOLO26 detection model on the
+ * Ethos-U85 (the program of `yolo export format=ethos` in ai_layer_detect/,
+ * by default YOLO26n with the 80 COCO classes) and the rest of its head on
+ * the CPU: the best class of each anchor, the threshold, the boxes.
  */
 #ifndef DETECT_DETECTOR_H_
 #define DETECT_DETECTOR_H_
 
 #include <stdint.h>
 
+#include "model_io.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define DETECTOR_MAX_DETECTIONS 32
-#define DETECTOR_CLASSES 80  /* COCO */
+#define DETECTOR_CLASSES MODEL_DETECT_CLASSES  /* the program's, from ai_layer_detect/model_io.h */
 #define DETECTOR_SCORE_THRESHOLD 0.25f  /* the predict default of `yolo detect predict` (conf=0.25) */
 
 typedef struct {
@@ -39,8 +41,8 @@ typedef struct {
 /* Input size in pixels: the model takes DETECTOR_INPUT_SIZE x DETECTOR_INPUT_SIZE RGB888. */
 extern const int DETECTOR_INPUT_SIZE;
 
-/* Upper-case COCO class names (the panel's font has no lower case), in the
-   order of the model's class channels. */
+/* Upper-case class names (the panel's font has no lower case), in the order
+   of the model's class channels: the names of the export's metadata.yaml. */
 extern const char *const DETECTOR_CLASS_NAMES[DETECTOR_CLASSES];
 
 /* Load the program and the method. 0 on success. */
