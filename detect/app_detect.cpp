@@ -75,7 +75,12 @@ volatile int detect_camera_enable = DETECT_CAMERA_AUTOSTART;
 
 namespace {
 
-constexpr int kSize = TEST_IMAGE_SIZE;
+// The model input, square RGB888 at the program's size; the test image has to
+// have it too.
+constexpr int32_t kInputShape[] = MODEL_DETECT_INPUT0_SHAPE;  // {1, S, S, 3}
+constexpr int kSize = kInputShape[1];
+static_assert(TEST_IMAGE_SIZE == kSize,
+              "detect/test_image.c has another size than the program's input: run detect/make_test_image.py");
 constexpr uint32_t kInputBytes = kSize * kSize * 3;
 constexpr int kSlots = 2;
 

@@ -13,6 +13,8 @@
 # The AI layer ai_layer_detect/ is committed. For another model, classes or input size:
 #   yolo export model=best.pt format=ethos name=ethos-u85-256 imgsz=416 data=my_data.yaml
 #   python detect/make_ai_layer.py best_ethos_model
+# and after a change of input size the test image again, here with the host
+# reference of the weights the program was exported from:
 #   python detect/make_test_image.py my_image.jpg --weights best.pt
 # Build and load: target-type DevKit-E8.
 project:

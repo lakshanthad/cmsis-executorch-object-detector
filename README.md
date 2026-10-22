@@ -146,13 +146,11 @@ yolo export model=yolo26n.pt format=ethos name=ethos-u85-256 imgsz=416 data=coco
 writes to `yolo26n_ethos_model/`, imported by `detect/make_ai_layer.py`. Any
 YOLO26 detection model runs the same way, including one trained on your own
 classes. Export it in the venv with your dataset's YAML as `data=` (the
-export calibrates on its images), import it, and make the test image from
-the same weights and an image of your data:
+export calibrates on its images) and import it:
 
 ```bash
 yolo export model=best.pt format=ethos name=ethos-u85-256 imgsz=416 data=my_data.yaml
 .venv/bin/python detect/make_ai_layer.py best_ethos_model
-.venv/bin/python detect/make_test_image.py my_image.jpg --weights best.pt
 ```
 
 `make_ai_layer.py` writes the class count and the class names of the
@@ -160,8 +158,21 @@ export's `metadata.yaml` into `ai_layer_detect/model_io.h`, and the
 application labels the boxes with them. The panel's font has upper case
 letters, digits and common punctuation only, so the names are shown in upper
 case, an underscore as a space and any other character as `?`.
-`make_test_image.py` refuses weights with another class count than the
-program; without `--weights` it takes the COCO-pretrained `yolo26n.pt`.
+
+The test image has to have the program's input size: after a change of
+`imgsz`, make it again (the build stops with that message otherwise). With
+an image of your data and the weights the program was exported from,
+`make_test_image.py` also prints the host reference that the board's
+detections compare with:
+
+```bash
+.venv/bin/python detect/make_test_image.py my_image.jpg --weights best.pt
+```
+
+Without `--weights` the reference comes from the COCO-pretrained
+`yolo26n.pt`, and the script leaves it out when the program has other
+classes. Weights given with `--weights` that do not have the program's
+classes are refused.
 
 The build checks that the program fits the board:
 

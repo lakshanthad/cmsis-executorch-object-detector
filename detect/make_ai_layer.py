@@ -200,16 +200,16 @@ def export_metadata(io: dict, export_dir: Path) -> tuple[dict, list[str], str]:
 
 def panel_label(name: str) -> str:
     """A class name as the panel's 5x7 font writes it: upper case, ASCII 0x20 to 0x5A, an underscore as a space."""
-    text = name.upper().replace("_", " ")
-    label = "".join(c if " " <= c <= "Z" else "?" for c in text)
-    if label != text:
-        print(f"[detect] warning: the panel's font has no glyph for some of {name!r}; it shows {label!r}", file=sys.stderr)
-    return label
+    return "".join(c if " " <= c <= "Z" else "?" for c in name.upper().replace("_", " "))
 
 
 def class_names(names: list[str]) -> list[str]:
     """MODEL_DETECT_CLASS_NAMES: the panel labels as a C initializer, continued over lines of up to 100 columns."""
-    strings = ['"' + panel_label(n).replace('"', '\\"').replace("?", "\\?") + '"' for n in names]
+    labels = [panel_label(n) for n in names]
+    for name, label in zip(names, labels):
+        if label != name.upper().replace("_", " "):
+            print(f"[detect] warning: the panel's font has no glyph for some of {name!r}; it shows {label!r}", file=sys.stderr)
+    strings = ['"' + label.replace('"', '\\"').replace("?", "\\?") + '"' for label in labels]
     rows, row = [], []
     for item in strings:
         if row and len("    " + ", ".join([*row, item]) + ", \\") > 100:
@@ -320,7 +320,11 @@ def main() -> None:
     print(f"[detect] {model} {io['method']}: input {io['input']} outputs {io['outputs']}, INT8, {len(names)} classes")
     print(f"[detect] planned {io['planned'][0]} bytes, NPU scratch {scratch} bytes")
     print(f"[detect] {len(pte)} byte program, CPU operators: {operators or 'none'}")
-    print(f"[detect] wrote {LAYER}; now run detect/make_test_image.py")
+    print(f"[detect] wrote {LAYER}")
+    size, test_image = io["input"][1], HERE / "test_image.h"
+    made = re.search(r"^#define TEST_IMAGE_SIZE (\d+)$", test_image.read_text(), re.MULTILINE) if test_image.is_file() else None
+    if not made or int(made.group(1)) != size:
+        print(f"[detect] now run detect/make_test_image.py: the build needs the test image at {size} x {size}")
 
 
 if __name__ == "__main__":
